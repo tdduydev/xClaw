@@ -1,0 +1,23 @@
+{
+    "name": "autox",
+    "version": "0.1.0",
+    "private": true,
+    "description": "AutoX - AI Agent Platform with drag-and-drop workflow builder",
+    "workspaces": [
+        "packages/*"
+    ],
+    "scripts": {
+        "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
+        "dev:server": "npm run dev -w packages/server",
+        "dev:web": "npm run dev -w packages/web",
+        "build": "npm run build -w packages/shared && npm run build -w packages/core && npm run build -w packages/skills && npm run build -w packages/server && npm run build -w packages/web",
+        "test": "vitest",
+        "lint": "eslint packages/*/src --ext .ts,.tsx"
+    },
+    "devDependencies": {
+        "concurrently": "^9.1.0",
+        "typescript": "^5.7.0",
+        "vitest": "^3.0.0",
+        "eslint": "^9.0.0"
+    }
+}
