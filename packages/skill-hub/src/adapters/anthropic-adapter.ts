@@ -120,8 +120,8 @@ export class AnthropicAdapter {
     const frontmatter = this.extractFrontmatter(content);
     const body = this.extractBody(content);
 
-    const name = frontmatter.name ?? folderName;
-    const description = frontmatter.description ?? `Imported from Anthropic: ${folderName}`;
+    const name = (frontmatter.name as string) ?? folderName;
+    const description = (frontmatter.description as string) ?? `Imported from Anthropic: ${folderName}`;
 
     let allowedTools: string[] | undefined;
     if (frontmatter['allowed-tools']) {

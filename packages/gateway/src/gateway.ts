@@ -1403,14 +1403,14 @@ export class Gateway {
     // Search / list skills
     app.get('/api/hub/skills', async (req, res) => {
       try {
-        const params = {
-          query: req.query.q as string | undefined,
-          category: req.query.category as string | undefined,
-          source: req.query.source as string | undefined,
+        const params: import('@xclaw/shared').HubSearchParams = {
+          search: req.query.q as string | undefined,
+          category: req.query.category as import('@xclaw/shared').SkillCategory | undefined,
+          source: req.query.source as import('@xclaw/shared').SkillSource | undefined,
           tags: req.query.tags ? String(req.query.tags).split(',') : undefined,
-          sortBy: (req.query.sortBy as 'featured' | 'popular' | 'recent' | 'rating' | 'name') ?? 'featured',
+          sort: (req.query.sortBy as 'featured' | 'popular' | 'recent' | 'rating' | 'name') ?? 'featured',
           page: req.query.page ? Number(req.query.page) : 1,
-          pageSize: req.query.pageSize ? Number(req.query.pageSize) : 20,
+          limit: req.query.pageSize ? Number(req.query.pageSize) : 20,
         };
         const result = await this.skillHub.search(params);
         res.json(result);
@@ -1418,43 +1418,48 @@ export class Gateway {
     });
 
     // Get skill detail
-    app.get('/api/hub/skills/:id(*)', async (req, res) => {
+    app.get('/api/hub/skills/:id{*path}', async (req, res) => {
       try {
-        const skill = await this.skillHub.getSkill(req.params.id);
+        const skillId = [req.params.id, ...(req.params.path || [])].join('/');
+        const skill = await this.skillHub.getSkill(skillId);
         if (!skill) return res.status(404).json({ error: 'Skill not found' });
         res.json(skill);
       } catch (err) { res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' }); }
     });
 
     // Get reviews for a skill
-    app.get('/api/hub/skills/:id(*)/reviews', async (req, res) => {
+    app.get('/api/hub/skills/:id{*path}/reviews', async (req, res) => {
       try {
-        const reviews = await this.skillHub.getReviews(req.params.id);
+        const skillId = [req.params.id, ...(req.params.path || [])].join('/');
+        const reviews = await this.skillHub.getReviews(skillId);
         res.json({ reviews });
       } catch (err) { res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' }); }
     });
 
     // Install skill from registry
-    app.post('/api/hub/skills/:id(*)/install', async (req, res) => {
+    app.post('/api/hub/skills/:id{*path}/install', async (req, res) => {
       try {
-        const result = await this.skillHub.installSkill(req.params.id);
+        const skillId = [req.params.id, ...(req.params.path || [])].join('/');
+        const result = await this.skillHub.installSkill(skillId);
         res.json(result);
       } catch (err) { res.status(500).json({ error: err instanceof Error ? err.message : 'Install failed' }); }
     });
 
     // Uninstall skill
-    app.delete('/api/hub/skills/:id(*)/uninstall', async (req, res) => {
+    app.delete('/api/hub/skills/:id{*path}/uninstall', async (req, res) => {
       try {
-        const result = await this.skillHub.uninstallSkill(req.params.id);
+        const skillId = [req.params.id, ...(req.params.path || [])].join('/');
+        const result = await this.skillHub.uninstallSkill(skillId);
         res.json(result);
       } catch (err) { res.status(500).json({ error: err instanceof Error ? err.message : 'Uninstall failed' }); }
     });
 
     // Add review
-    app.post('/api/hub/skills/:id(*)/reviews', async (req, res) => {
+    app.post('/api/hub/skills/:id{*path}/reviews', async (req, res) => {
       try {
-        const { rating, comment, author } = req.body;
-        const review = await this.skillHub.addReview(req.params.id, rating, comment, author);
+        const skillId = [req.params.id, ...(req.params.path || [])].join('/');
+        const { rating, title, body, userId, userName } = req.body;
+        const review = await this.skillHub.addReview(skillId, userId ?? 'anonymous', userName ?? 'Anonymous', rating, title ?? '', body ?? '');
         res.json(review);
       } catch (err) { res.status(500).json({ error: err instanceof Error ? err.message : 'Failed' }); }
     });

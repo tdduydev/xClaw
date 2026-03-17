@@ -20,7 +20,7 @@
         "dev:server": "npm run dev -w packages/server",
         "dev:web": "npm run dev -w packages/web",
         "dev:gateway": "npm run dev -w packages/gateway",
-        "build": "npm run build -w packages/shared && npm run build -w packages/core && npm run build -w packages/skills && npm run build -w packages/gateway && npm run build -w packages/server && npm run build -w packages/web",
+        "build": "npm run build -w packages/shared && npm run build -w packages/core && npm run build -w packages/skills && npm run build -w packages/skill-hub && npm run build -w packages/gateway && npm run build -w packages/server && npm run build -w packages/web",
         "gateway": "npm run start -w packages/gateway",
         "cli": "tsx packages/cli/src/index.ts",
         "test": "vitest",
