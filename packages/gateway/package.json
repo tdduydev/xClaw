@@ -16,15 +16,16 @@
         "dev": "tsc -b --watch"
     },
     "dependencies": {
-        "@xclaw/shared": "*",
-        "@xclaw/core": "*",
-        "@xclaw/db": "*",
-        "@xclaw/integrations": "*",
-        "@xclaw/domains": "*",
-        "@xclaw/ml": "*",
-        "hono": "^4.7.0",
         "@hono/node-server": "^1.14.0",
         "@hono/node-ws": "^1.1.0",
+        "@modelcontextprotocol/sdk": "^1.27.1",
+        "@xclaw/core": "*",
+        "@xclaw/db": "*",
+        "@xclaw/domains": "*",
+        "@xclaw/integrations": "*",
+        "@xclaw/ml": "*",
+        "@xclaw/shared": "*",
+        "hono": "^4.7.0",
         "jose": "^6.0.0"
     }
 }

@@ -1,23 +1,14 @@
 import { Hono } from 'hono';
 import type { DomainPack } from '@xclaw/domains';
+import type { Agent } from '@xclaw/core';
+import { MCPClientManager, type MCPServerConfig } from './mcp-client.js';
 
 // ─── MCP Server Registry ────────────────────────────────────
-// Manages connections to external MCP servers (chrome-devtools, github, etc.)
-// and exposes xClaw tools as MCP-compatible endpoints
+// Manages real connections to external MCP servers (chrome-devtools, github, etc.)
+// Spawns child processes, registers tools with the Agent's ToolRegistry
 
-export interface MCPServerConfig {
-  id: string;
-  name: string;
-  type: 'stdio' | 'sse' | 'http';
-  command?: string;    // for stdio
-  args?: string[];     // for stdio
-  url?: string;        // for sse/http
-  enabled: boolean;
-  status: 'connected' | 'disconnected' | 'error';
-  toolCount: number;
-  lastPing?: string;
-  description?: string;
-}
+// Singleton MCP client manager
+const mcpManager = new MCPClientManager();
 
 // In-memory MCP server registry
 const mcpServers: MCPServerConfig[] = [
@@ -26,10 +17,10 @@ const mcpServers: MCPServerConfig[] = [
     name: 'Chrome DevTools',
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@anthropic-ai/mcp-chrome-devtools'],
+    args: ['-y', 'chrome-devtools-mcp@latest'],
     enabled: false,
     status: 'disconnected',
-    toolCount: 25,
+    toolCount: 0,
     description: 'Control Chrome browser: navigate, click, screenshot, evaluate JS, network inspection',
   },
   {
@@ -37,10 +28,10 @@ const mcpServers: MCPServerConfig[] = [
     name: 'GitHub',
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@anthropic-ai/mcp-github'],
+    args: ['-y', '@modelcontextprotocol/server-github'],
     enabled: false,
     status: 'disconnected',
-    toolCount: 40,
+    toolCount: 0,
     description: 'GitHub integration: repos, issues, PRs, code search, branch management',
   },
   {
@@ -48,10 +39,10 @@ const mcpServers: MCPServerConfig[] = [
     name: 'PostgreSQL',
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@anthropic-ai/mcp-postgresql'],
+    args: ['-y', '@anthropic-ai/mcp-server-postgres', 'postgresql://localhost:5432/xclaw'],
     enabled: false,
     status: 'disconnected',
-    toolCount: 12,
+    toolCount: 0,
     description: 'Query PostgreSQL databases, inspect schemas, run migrations',
   },
   {
@@ -59,10 +50,10 @@ const mcpServers: MCPServerConfig[] = [
     name: 'Filesystem',
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@anthropic-ai/mcp-filesystem', '/app'],
+    args: ['-y', '@modelcontextprotocol/server-filesystem', process.cwd()],
     enabled: false,
     status: 'disconnected',
-    toolCount: 8,
+    toolCount: 0,
     description: 'Read/write files, list directories, search for files',
   },
 ];
@@ -74,7 +65,12 @@ function getAllServers(): MCPServerConfig[] {
   return [...mcpServers, ...customMcpServers];
 }
 
-export function createMCPRoutes(domainPacks?: DomainPack[]) {
+export function createMCPRoutes(domainPacks?: DomainPack[], agent?: Agent) {
+  // Wire up the ToolRegistry so MCP tools become available to the agent
+  if (agent) {
+    mcpManager.setToolRegistry(agent.tools);
+  }
+
   const app = new Hono();
 
   // ─── MCP Server Management ──────────────────────────────
@@ -132,20 +128,45 @@ export function createMCPRoutes(domainPacks?: DomainPack[]) {
     return c.json({ ok: true, server }, 201);
   });
 
-  // PUT /mcp/servers/:id/toggle — Enable/disable an MCP server
-  app.put('/servers/:id/toggle', (c) => {
+  // PUT /mcp/servers/:id/toggle — Enable/disable an MCP server (real connection)
+  app.put('/servers/:id/toggle', async (c) => {
     const id = c.req.param('id');
     const server = getAllServers().find((s) => s.id === id);
     if (!server) return c.json({ error: 'MCP server not found' }, 404);
 
-    server.enabled = !server.enabled;
-    server.status = server.enabled ? 'connected' : 'disconnected';
-    server.lastPing = server.enabled ? new Date().toISOString() : undefined;
-    return c.json({ ok: true, server });
+    if (server.enabled) {
+      // Disconnect
+      await mcpManager.disconnect(server.id);
+      server.enabled = false;
+      server.status = 'disconnected';
+      server.toolCount = 0;
+      server.lastPing = undefined;
+      server.error = undefined;
+      console.log(`🔌 MCP server "${server.name}" disconnected`);
+      return c.json({ ok: true, server });
+    }
+
+    // Connect — spawn real MCP subprocess
+    try {
+      const result = await mcpManager.connect(server);
+      server.enabled = true;
+      server.status = 'connected';
+      server.toolCount = result.tools.length;
+      server.lastPing = new Date().toISOString();
+      server.error = undefined;
+      console.log(`✅ MCP server "${server.name}" connected with ${result.tools.length} tools: ${result.tools.join(', ')}`);
+      return c.json({ ok: true, server, tools: result.tools });
+    } catch (err: any) {
+      server.enabled = false;
+      server.status = 'error';
+      server.error = err.message || 'Connection failed';
+      console.error(`❌ MCP server "${server.name}" connection failed:`, err.message);
+      return c.json({ ok: false, error: err.message, server }, 500);
+    }
   });
 
   // DELETE /mcp/servers/:id — Remove a custom MCP server
-  app.delete('/servers/:id', (c) => {
+  app.delete('/servers/:id', async (c) => {
     const id = c.req.param('id');
     // Can only delete custom servers
     if (mcpServers.find((s) => s.id === id)) {
@@ -153,8 +174,22 @@ export function createMCPRoutes(domainPacks?: DomainPack[]) {
     }
     const idx = customMcpServers.findIndex((s) => s.id === id);
     if (idx === -1) return c.json({ error: 'MCP server not found' }, 404);
+    // Disconnect if connected
+    await mcpManager.disconnect(id);
     customMcpServers.splice(idx, 1);
     return c.json({ ok: true });
+  });
+
+  // GET /mcp/servers/:id/tools — List tools from a connected MCP server
+  app.get('/servers/:id/tools', (c) => {
+    const id = c.req.param('id');
+    const server = getAllServers().find((s) => s.id === id);
+    if (!server) return c.json({ error: 'MCP server not found' }, 404);
+    if (!mcpManager.isConnected(id)) {
+      return c.json({ error: 'Server is not connected' }, 400);
+    }
+    const tools = mcpManager.getServerTools(id);
+    return c.json({ tools, total: tools.length });
   });
 
   // ─── MCP xClaw Tool Exposure ────────────────────────────

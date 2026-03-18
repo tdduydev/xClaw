@@ -63,7 +63,7 @@ export function createGateway(ctx: GatewayContext) {
     api.route('/ml', createMLRoutes(ctx.mlEngine));
   }
   api.route('/settings', createSettingsRoutes());
-  api.route('/mcp', createMCPRoutes(ctx.domainPacks));
+  api.route('/mcp', createMCPRoutes(ctx.domainPacks, ctx.agent));
   app.route('/api', api);
 
   return app;

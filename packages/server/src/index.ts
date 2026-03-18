@@ -22,7 +22,7 @@ dotenv.config();
 const {
   PORT = '3000',
   HOST = '0.0.0.0',
-  CORS_ORIGINS = 'http://localhost:5173',
+  CORS_ORIGINS = 'http://localhost:5173,http://localhost:5174,http://localhost:5175',
   JWT_SECRET = 'xclaw-dev-secret-change-me',
   LLM_PROVIDER = 'openai',
   LLM_MODEL: LLM_MODEL_ENV,

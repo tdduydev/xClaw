@@ -1,0 +1,221 @@
+@import "tailwindcss";
+
+@layer base {
+    :root {
+        --his-bg: #f8fafc;
+        --his-surface: #ffffff;
+        --his-surface-alt: #f1f5f9;
+        --his-border: #e2e8f0;
+        --his-border-light: #f1f5f9;
+        --his-fg: #0f172a;
+        --his-fg-secondary: #334155;
+        --his-fg-muted: #94a3b8;
+        --his-primary: #0ea5e9;
+        --his-primary-hover: #0284c7;
+        --his-primary-soft: #f0f9ff;
+        --his-primary-light: #38bdf8;
+        --his-success: #10b981;
+        --his-success-soft: #ecfdf5;
+        --his-warning: #f59e0b;
+        --his-warning-soft: #fffbeb;
+        --his-danger: #ef4444;
+        --his-danger-soft: #fef2f2;
+        --his-info: #6366f1;
+        --his-info-soft: #eef2ff;
+        --his-sidebar: #0f172a;
+        --his-sidebar-hover: #1e293b;
+        --his-sidebar-active: #0ea5e9;
+        --his-sidebar-text: #94a3b8;
+        --his-sidebar-text-active: #ffffff;
+        --his-radius: 12px;
+        --his-radius-sm: 8px;
+        --his-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+        --his-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        --his-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+    }
+
+    html,
+    body,
+    #root {
+        height: 100%;
+    }
+
+    body {
+        font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
+        background: var(--his-bg);
+        color: var(--his-fg);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    ::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+}
+
+@layer components {
+    .his-card {
+        background: var(--his-surface);
+        border: 1px solid var(--his-border);
+        border-radius: var(--his-radius);
+        box-shadow: var(--his-shadow);
+    }
+
+    .his-input {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid var(--his-border);
+        border-radius: var(--his-radius-sm);
+        background: var(--his-surface);
+        color: var(--his-fg);
+        font-size: 13px;
+        outline: none;
+        transition:
+            border-color 0.15s,
+            box-shadow 0.15s;
+    }
+    .his-input:focus {
+        border-color: var(--his-primary);
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+    }
+    .his-input::placeholder {
+        color: var(--his-fg-muted);
+    }
+
+    .his-select {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid var(--his-border);
+        border-radius: var(--his-radius-sm);
+        background: var(--his-surface);
+        color: var(--his-fg);
+        font-size: 13px;
+        outline: none;
+        cursor: pointer;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        padding-right: 36px;
+    }
+    .his-select:focus {
+        border-color: var(--his-primary);
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+    }
+
+    .his-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 20px;
+        border: none;
+        border-radius: var(--his-radius-sm);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        line-height: 1;
+    }
+    .his-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .his-btn-primary {
+        background: var(--his-primary);
+        color: #fff;
+    }
+    .his-btn-primary:hover:not(:disabled) {
+        background: var(--his-primary-hover);
+    }
+    .his-btn-danger {
+        background: var(--his-danger);
+        color: #fff;
+    }
+    .his-btn-danger:hover:not(:disabled) {
+        background: #dc2626;
+    }
+    .his-btn-warning {
+        background: var(--his-warning);
+        color: #fff;
+    }
+    .his-btn-ghost {
+        background: transparent;
+        color: var(--his-fg-secondary);
+    }
+    .his-btn-ghost:hover:not(:disabled) {
+        background: var(--his-surface-alt);
+    }
+    .his-btn-sm {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .his-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 100px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+
+    .his-label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--his-fg-secondary);
+        margin-bottom: 6px;
+    }
+
+    .soap-s {
+        border-left: 3px solid #6366f1;
+    }
+    .soap-o {
+        border-left: 3px solid #0ea5e9;
+    }
+    .soap-a {
+        border-left: 3px solid #f59e0b;
+    }
+    .soap-p {
+        border-left: 3px solid #10b981;
+    }
+
+    .his-transition {
+        transition: all 0.2s ease;
+    }
+
+    .alert-pulse {
+        animation: pulse-danger 2s infinite;
+    }
+}
+
+@keyframes pulse-danger {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    }
+}

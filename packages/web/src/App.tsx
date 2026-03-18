@@ -15,6 +15,7 @@ import { DomainDetailPage } from './pages/DomainDetailPage';
 import { DomainWorkspacePage } from './pages/DomainWorkspacePage';
 import { MLPage } from './pages/MLPage';
 import { MCPPage } from './pages/MCPPage';
+import { EmbedChatPage } from './pages/EmbedChatPage';
 
 function ProtectedRoutes() {
     const { user, loading } = useAuth();
@@ -47,7 +48,12 @@ export function App() {
     return (
         <BrowserRouter>
             <AuthProvider>
-                <ProtectedRoutes />
+                <Routes>
+                    {/* Embed route — no sidebar, auto-login via token */}
+                    <Route path="/embed/chat" element={<EmbedChatPage />} />
+                    {/* All other routes — with auth + sidebar layout */}
+                    <Route path="/*" element={<ProtectedRoutes />} />
+                </Routes>
             </AuthProvider>
         </BrowserRouter>
     );
