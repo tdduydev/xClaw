@@ -25,6 +25,7 @@ import { createOAuth2Routes } from './oauth2.js';
 import { createWorkflowRoutes } from './workflows.js';
 import { createMonitoringRoutes } from './monitoring.js';
 import { createPluginRoutes } from './plugins.js';
+import { createAgentsRoutes } from './agents.js';
 
 export interface GatewayContext {
   agent: Agent;
@@ -86,6 +87,7 @@ export function createGateway(ctx: GatewayContext) {
   if (ctx.pluginManager) {
     api.route('/plugins', createPluginRoutes(ctx.pluginManager));
   }
+  api.route('/agents', createAgentsRoutes());
   app.route('/api', api);
 
   return app;

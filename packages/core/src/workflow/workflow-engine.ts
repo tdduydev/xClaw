@@ -395,11 +395,39 @@ export class WorkflowEngine {
     return merged;
   }
 
+  /** Build a nested sandbox from flat dotted keys, normalizing hyphens to underscores for valid JS identifiers */
+  private buildSandbox(variables: Record<string, unknown>): Record<string, unknown> {
+    const sandbox: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(variables)) {
+      const safeKey = key.replace(/-/g, '_');
+      const parts = safeKey.split('.');
+      if (parts.length === 1) {
+        sandbox[parts[0]] = value;
+      } else {
+        let current: Record<string, unknown> = sandbox;
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!(parts[i] in current) || typeof current[parts[i]] !== 'object' || current[parts[i]] === null) {
+            current[parts[i]] = {};
+          }
+          current = current[parts[i]] as Record<string, unknown>;
+        }
+        current[parts[parts.length - 1]] = value;
+      }
+    }
+    return sandbox;
+  }
+
+  /** Normalize hyphens in identifier positions to underscores for valid JS */
+  private normalizeExpression(expression: string): string {
+    return expression.replace(/([a-zA-Z0-9])-([a-zA-Z0-9])/g, '$1_$2');
+  }
+
   private evaluateCondition(condition: string, variables: Record<string, unknown>): boolean {
     try {
       const sanitized = condition.replace(/[^a-zA-Z0-9_.><=!&|() "'\-]/g, '');
-      const sandbox = vm.createContext(Object.freeze({ ...variables }));
-      const result = vm.runInContext(`!!(${sanitized})`, sandbox, { timeout: 1000 });
+      const normalized = this.normalizeExpression(sanitized);
+      const sandbox = vm.createContext(Object.freeze(this.buildSandbox(variables)));
+      const result = vm.runInContext(`!!(${normalized})`, sandbox, { timeout: 1000 });
       return !!result;
     } catch {
       return false;
@@ -409,12 +437,20 @@ export class WorkflowEngine {
   private resolveTemplate(template: string, vars: Record<string, unknown>): string {
     return template.replace(/\{\{([^}]+)\}\}/g, (_match, path: string) => {
       const keys = path.trim().split('.');
-      let value: unknown = vars;
-      for (const key of keys) {
-        if (value == null || typeof value !== 'object') return '';
-        value = (value as Record<string, unknown>)[key];
+      // Greedy prefix match: try longest dotted key first (handles flat keys like "trigger-1.data")
+      for (let i = keys.length; i >= 1; i--) {
+        const prefix = keys.slice(0, i).join('.');
+        if (prefix in vars) {
+          let value: unknown = vars[prefix];
+          // Traverse remaining nested path
+          for (let j = i; j < keys.length; j++) {
+            if (value == null || typeof value !== 'object') return '';
+            value = (value as Record<string, unknown>)[keys[j]];
+          }
+          return value != null ? String(value) : '';
+        }
       }
-      return value != null ? String(value) : '';
+      return '';
     });
   }
 
@@ -461,8 +497,9 @@ export class WorkflowEngine {
       let matchValue: unknown;
       try {
         const sanitized = expression.replace(/[^a-zA-Z0-9_.><=!&|() "'\-]/g, '');
-        const sandbox = vm.createContext(Object.freeze({ ...context.variables, ...inputs }));
-        matchValue = vm.runInContext(`(${sanitized})`, sandbox, { timeout: 1000 });
+        const normalized = this.normalizeExpression(sanitized);
+        const sandbox = vm.createContext(Object.freeze(this.buildSandbox({ ...context.variables, ...inputs })));
+        matchValue = vm.runInContext(`(${normalized})`, sandbox, { timeout: 1000 });
       } catch {
         matchValue = this.resolveTemplate(expression, context.variables);
       }

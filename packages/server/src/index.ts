@@ -21,7 +21,7 @@ import { PluginManager } from '@xclaw-ai/core';
 import type { AgentConfig, GatewayConfig } from '@xclaw-ai/shared';
 import { TelegramChannel } from '@xclaw-ai/channel-telegram';
 import { loadKnowledgePacks } from './knowledge-loader.js';
-import { runMigrations, seedInitialData, connectMongo, getMongo, mongoMonitoringStore } from '@xclaw-ai/db';
+import { runMigrations, seedInitialData, connectMongo, getMongo, mongoMonitoringStore, sessionsCollection, messagesCollection } from '@xclaw-ai/db';
 
 dotenv.config();
 
@@ -215,7 +215,46 @@ async function main() {
       telegramChannel.onMessage(async (incoming) => {
         const sessionId = `tg-${incoming.channelId}-${incoming.userId}`;
         try {
+          // Save session (idempotent)
+          const sessions = sessionsCollection();
+          const existingSession = await sessions.findOne({ _id: sessionId });
+          const now = new Date();
+          if (!existingSession) {
+            await sessions.insertOne({
+              _id: sessionId,
+              tenantId: 'default',
+              userId: `tg-${incoming.userId}`,
+              platform: 'telegram',
+              title: incoming.content.slice(0, 60) + (incoming.content.length > 60 ? '...' : ''),
+              createdAt: now,
+              updatedAt: now,
+            });
+          } else {
+            await sessions.updateOne({ _id: sessionId }, { $set: { updatedAt: now } });
+          }
+
+          // Save user message
+          const messages = messagesCollection();
+          await messages.insertOne({
+            _id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            sessionId,
+            role: 'user',
+            content: incoming.content,
+            metadata: incoming.metadata,
+            createdAt: now,
+          });
+
           const response = await agent.chat(sessionId, incoming.content);
+
+          // Save assistant response
+          await messages.insertOne({
+            _id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            sessionId,
+            role: 'assistant',
+            content: response,
+            createdAt: new Date(),
+          });
+
           await telegramChannel!.send({
             platform: 'telegram',
             channelId: incoming.channelId,

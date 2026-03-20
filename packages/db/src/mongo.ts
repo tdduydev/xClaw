@@ -78,6 +78,20 @@ export interface MongoSystemLog {
   createdAt: Date;
 }
 
+export interface MongoChannelConnection {
+  _id: string;
+  tenantId: string;
+  userId: string;
+  channelType: 'telegram' | 'discord' | 'facebook' | 'slack' | 'whatsapp' | 'webhook';
+  name: string;
+  config: Record<string, any>; // e.g. { botToken, allowedChatIds }
+  status: 'active' | 'inactive' | 'error';
+  lastConnectedAt?: Date;
+  metadata?: Record<string, any>; // e.g. { botUsername, botId }
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ─── Connection ────────────────────────────────────────────
 
 let mongoClient: MongoClient | null = null;
@@ -146,6 +160,10 @@ export function systemLogsCollection(db?: Db): Collection<MongoSystemLog> {
   return (db || getMongo()).collection<MongoSystemLog>('system_logs');
 }
 
+export function channelConnectionsCollection(db?: Db): Collection<MongoChannelConnection> {
+  return (db || getMongo()).collection<MongoChannelConnection>('channel_connections');
+}
+
 // ─── Indexes ───────────────────────────────────────────────
 
 async function ensureIndexes(db: Db) {
@@ -182,4 +200,10 @@ async function ensureIndexes(db: Db) {
   await systemLogs.createIndex({ message: 'text' });
   // TTL: auto-delete system logs after 30 days
   await systemLogs.createIndex({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 3600 });
+
+  // Channel connections
+  const channels = channelConnectionsCollection(db);
+  await channels.createIndex({ tenantId: 1, userId: 1 });
+  await channels.createIndex({ tenantId: 1, channelType: 1 });
+  await channels.createIndex({ status: 1 });
 }

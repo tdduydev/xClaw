@@ -22,6 +22,8 @@ import { MLPage } from './pages/MLPage';
 import { MCPPage } from './pages/MCPPage';
 import { PluginPage } from './pages/PluginPage';
 import { EmbedChatPage } from './pages/EmbedChatPage';
+import { AgentsPage } from './pages/AgentsPage';
+import { WorkflowsPage } from './pages/WorkflowsPage';
 
 function ProtectedRoutes() {
     const { user, loading } = useAuth();
@@ -43,6 +45,8 @@ function ProtectedRoutes() {
                 <Route path="domains/:id/workspace" element={<DomainWorkspacePage />} />
                 <Route path="ml" element={<MLPage />} />
                 <Route path="mcp" element={<MCPPage />} />
+                <Route path="agents" element={<AgentsPage />} />
+                <Route path="workflows" element={<WorkflowsPage />} />
                 <Route path="plugins/:pluginId/*" element={<PluginPage />} />
                 <Route path="settings" element={<SettingsLayout />}>
                     <Route index element={<SettingsOverviewPage />} />

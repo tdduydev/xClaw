@@ -55,11 +55,11 @@ export { seedInitialData } from './seed.js';
 export {
   getMongo, connectMongo, closeMongo,
   sessionsCollection, messagesCollection, memoryEntriesCollection, agentConfigsCollection,
-  auditLogsCollection, systemLogsCollection,
+  auditLogsCollection, systemLogsCollection, channelConnectionsCollection,
 } from './mongo.js';
 export type {
   MongoSession, MongoMessage, MongoMemoryEntry, MongoAgentConfig,
-  MongoAuditLog, MongoSystemLog,
+  MongoAuditLog, MongoSystemLog, MongoChannelConnection,
 } from './mongo.js';
 
 // Monitoring store

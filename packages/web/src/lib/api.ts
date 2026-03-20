@@ -983,3 +983,149 @@ export async function healthcareGetStats() {
   if (!res.ok) throw new Error('Failed to fetch healthcare stats');
   return res.json();
 }
+
+// ─── Agents / Channel Connections ───────────────────────────
+
+export async function getChannelTypes() {
+  const res = await apiFetch('/api/agents/channel-types');
+  if (!res.ok) throw new Error('Failed to fetch channel types');
+  return res.json();
+}
+
+export async function getChannels() {
+  const res = await apiFetch('/api/agents/channels');
+  if (!res.ok) throw new Error('Failed to fetch channels');
+  return res.json();
+}
+
+export async function createChannel(data: { channelType: string; name: string; config: Record<string, string> }) {
+  const res = await apiFetch('/api/agents/channels', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create channel' }));
+    throw new Error(err.error || 'Failed to create channel');
+  }
+  return res.json();
+}
+
+export async function updateChannel(id: string, data: { name?: string; config?: Record<string, string>; status?: string }) {
+  const res = await apiFetch(`/api/agents/channels/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update channel');
+  return res.json();
+}
+
+export async function deleteChannel(id: string) {
+  const res = await apiFetch(`/api/agents/channels/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete channel');
+  return res.json();
+}
+
+export async function testChannel(id: string) {
+  const res = await apiFetch(`/api/agents/channels/${encodeURIComponent(id)}/test`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to test channel');
+  return res.json();
+}
+
+export async function activateChannel(id: string) {
+  const res = await apiFetch(`/api/agents/channels/${encodeURIComponent(id)}/activate`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Activation failed' }));
+    throw new Error(err.error || 'Activation failed');
+  }
+  return res.json();
+}
+
+export async function deactivateChannel(id: string) {
+  const res = await apiFetch(`/api/agents/channels/${encodeURIComponent(id)}/deactivate`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to deactivate channel');
+  return res.json();
+}
+
+export async function getAgentSessions(platform?: string) {
+  const qs = platform ? `?platform=${encodeURIComponent(platform)}` : '';
+  const res = await apiFetch(`/api/agents/sessions${qs}`);
+  if (!res.ok) throw new Error('Failed to fetch sessions');
+  return res.json();
+}
+
+export async function getSessionMessages(sessionId: string) {
+  const res = await apiFetch(`/api/agents/sessions/${encodeURIComponent(sessionId)}/messages`);
+  if (!res.ok) throw new Error('Failed to fetch messages');
+  return res.json();
+}
+
+// ─── Workflows (CRUD) ──────────────────────────────────────
+
+export async function getWorkflows() {
+  const res = await apiFetch('/api/workflows');
+  if (!res.ok) throw new Error('Failed to fetch workflows');
+  return res.json();
+}
+
+export async function getWorkflow(id: string) {
+  const res = await apiFetch(`/api/workflows/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error('Failed to fetch workflow');
+  return res.json();
+}
+
+export async function createWorkflow(data: { name: string; description?: string; definition?: any }) {
+  const res = await apiFetch('/api/workflows', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to create workflow');
+  return res.json();
+}
+
+export async function updateWorkflow(id: string, data: { name?: string; description?: string; definition?: any; enabled?: boolean }) {
+  const res = await apiFetch(`/api/workflows/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update workflow');
+  return res.json();
+}
+
+export async function deleteWorkflow(id: string) {
+  const res = await apiFetch(`/api/workflows/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete workflow');
+  return res.json();
+}
+
+export async function executeWorkflow(id: string, triggerData?: Record<string, unknown>) {
+  const res = await apiFetch(`/api/workflows/${encodeURIComponent(id)}/execute`, {
+    method: 'POST',
+    body: JSON.stringify({ triggerData }),
+  });
+  if (!res.ok) throw new Error('Failed to execute workflow');
+  return res.json();
+}
+
+export async function validateWorkflow(id: string) {
+  const res = await apiFetch(`/api/workflows/${encodeURIComponent(id)}/validate`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to validate workflow');
+  return res.json();
+}
+
+export async function getWorkflowExecutions(workflowId: string) {
+  const res = await apiFetch(`/api/workflows/${encodeURIComponent(workflowId)}/executions`);
+  if (!res.ok) throw new Error('Failed to fetch executions');
+  return res.json();
+}

@@ -3,8 +3,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY packages/web/package.json ./packages/web/
+COPY packages/chat-sdk/package.json ./packages/chat-sdk/
 RUN npm install
 COPY packages/web/ ./packages/web/
+COPY packages/chat-sdk/ ./packages/chat-sdk/
 RUN npx vite build packages/web
 
 # ── Production stage ──────────────────────────────

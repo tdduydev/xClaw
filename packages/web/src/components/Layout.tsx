@@ -17,6 +17,8 @@ import {
     Menu,
     X,
     Plug,
+    Bot,
+    Workflow,
     Palette,
     ShoppingBag,
     Shirt,
@@ -76,6 +78,11 @@ const MAIN_NAV = [
 const KNOWLEDGE_NAV = [
     { to: '/knowledge', icon: Database, key: 'nav.knowledgeBase' as const },
     { to: '/search', icon: Search, key: 'nav.ragSearch' as const },
+];
+
+const AGENTS_NAV = [
+    { to: '/agents', icon: Bot, label: 'Agents' },
+    { to: '/workflows', icon: Workflow, label: 'Workflows' },
 ];
 
 const TOOLS_NAV = [
@@ -220,6 +227,12 @@ export function Layout() {
                             )}
                         </NavSection>
                     )}
+
+                    <NavSection label="Agents" collapsed={collapsed}>
+                        {AGENTS_NAV.map((item) => (
+                            <SidebarLink key={item.to} to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} />
+                        ))}
+                    </NavSection>
 
                     <NavSection label={t('nav.tools')} collapsed={collapsed}>
                         {TOOLS_NAV.map((item) => (

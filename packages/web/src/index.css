@@ -153,3 +153,24 @@ body {
 .prose-chat th {
   background: var(--color-bg-soft);
 }
+
+/* ── React Flow / Workflow Editor ─────────────────────────── */
+.workflow-handle:hover {
+  transform: scale(1.6) !important;
+  box-shadow: 0 0 8px 2px currentColor !important;
+  z-index: 10 !important;
+}
+.workflow-handle:active {
+  transform: scale(1.4) !important;
+}
+.react-flow__connection-path {
+  stroke: #a78bfa !important;
+  stroke-width: 3 !important;
+}
+.react-flow__edge-path {
+  cursor: pointer;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 3 !important;
+  filter: brightness(1.3);
+}
