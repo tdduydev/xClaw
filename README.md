@@ -53,6 +53,7 @@ cp .env.example .env   # edit with your API keys if needed
 ```
 
 > If you already cloned without `--recurse-submodules`, run:
+>
 > ```bash
 > git submodule update --init --recursive
 > ```
