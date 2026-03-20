@@ -1,6 +1,6 @@
 {
     "name": "@xclaw-ai/integrations",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "description": "xClaw Integration Layer — Connect to external services (Gmail, Telegram, GitHub, Notion, etc.)",
     "type": "module",
     "main": "dist/index.js",

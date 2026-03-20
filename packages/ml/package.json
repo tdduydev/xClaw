@@ -1,6 +1,6 @@
 {
     "name": "@xclaw-ai/ml",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "description": "xClaw ML/AutoML Engine — Dataset management, model training, AutoML pipelines, and model registry",
     "type": "module",
     "main": "dist/index.js",

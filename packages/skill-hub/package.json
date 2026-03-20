@@ -1,6 +1,6 @@
 {
     "name": "@xclaw-ai/skill-hub",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "description": "xClaw Skill Hub — skill registry and marketplace",
     "type": "module",
     "main": "dist/index.js",
