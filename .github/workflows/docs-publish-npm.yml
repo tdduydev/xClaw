@@ -32,7 +32,7 @@ jobs:
       - name: Determine package version
         id: pkg
         run: |
-          node -e "const fs=require('node:fs'); const pkg=require('./docs/package.json'); fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${pkg.name}\nversion=${pkg.version}\n`);"
+          node -e "const fs=require('node:fs'); const p=require('./docs/package.json'); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'name='+p.name+'\nversion='+p.version+'\n');"
 
       - name: Publish to npmjs.org
         env:
