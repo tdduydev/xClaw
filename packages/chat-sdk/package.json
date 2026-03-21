@@ -1,6 +1,6 @@
 {
     "name": "@xclaw-ai/chat-sdk",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "description": "xClaw Chat SDK — React & React Native client for xClaw AI Agent Platform",
     "type": "module",
     "main": "./dist/index.js",
