@@ -1,0 +1,256 @@
+---
+title: AI Data Security
+description: OWASP LLM Top 10 aligned security implementation for xClaw AI Agent Platform
+---
+
+# AI Data Security
+
+xClaw implements a defense-in-depth security architecture aligned with the **OWASP Top 10 for LLM Applications 2025**. This document covers every security layer, what it protects against, and how it's configured.
+
+---
+
+## 1. Threat Model — OWASP LLM Top 10 (2025)
+
+| # | Threat | xClaw Mitigation | Status |
+|---|--------|-------------------|--------|
+| LLM01 | Prompt Injection | `PromptInjectionDetector` — 14 regex heuristics, weighted scoring | ✅ Implemented |
+| LLM02 | Sensitive Information Disclosure | PII scanner (`pii.ts`), output sanitizer blocks system prompt leakage | ✅ Implemented |
+| LLM03 | Supply Chain Vulnerabilities | Plugin sandbox, skill review via SkillHub marketplace | ⚠️ Partial |
+| LLM04 | Data and Model Poisoning | Tenant-scoped RAG, feedback ingestion audit trail | ✅ Implemented |
+| LLM05 | Improper Output Handling | `OutputSanitizer` — XSS removal, script/iframe stripping | ✅ Implemented |
+| LLM06 | Excessive Agency | `TopicScopeGuard` — domain-scoped topic enforcement | ✅ Implemented |
+| LLM07 | System Prompt Leakage | Output sanitizer detects & blocks system prompt fragments | ✅ Implemented |
+| LLM08 | Vector and Embedding Weaknesses | Tenant-isolated RAG queries, collection-level access control | ✅ Implemented |
+| LLM09 | Misinformation | RAG source citations, web search with source attribution | ⚠️ Partial |
+| LLM10 | Unbounded Consumption | `LLMRateLimiter` — sliding window per tenant (60 req/min) | ✅ Implemented |
+
+---
+
+## 2. Security Pipeline Architecture
+
+Every message flows through a multi-layer security pipeline:
+
+```
+User Input
+  │
+  ├─ 1. Rate Limiter (LLM10)
+  │     └─ Sliding window per tenant — 60 req/min default
+  │
+  ├─ 2. Input Guardrails (LLM01, LLM06)
+  │     ├─ PromptInjectionDetector — heuristic scoring
+  │     └─ TopicScopeGuard — domain boundary enforcement
+  │
+  ├─ 3. PII Scanner (LLM02)
+  │     └─ Detects & redacts: email, phone, CCCD/CMND, credit card, SSN, etc.
+  │
+  ├─ 4. Tenant-Scoped RAG Retrieval (LLM08)
+  │     └─ Only returns documents owned by the requesting tenant
+  │
+  ├─ 5. LLM Call
+  │     └─ Provider-agnostic (10 providers supported)
+  │
+  ├─ 6. Output Guardrails (LLM05, LLM07)
+  │     ├─ System prompt leakage detection
+  │     └─ XSS/injection pattern removal
+  │
+  └─ 7. Response to User
+```
+
+---
+
+## 3. Guardrail System
+
+### GuardrailPipeline
+
+Orchestrates input and output guardrails in sequence. Fail-fast: first failing guardrail blocks the request.
+
+```typescript
+import { GuardrailPipeline, PromptInjectionDetector, OutputSanitizer, TopicScopeGuard } from '@xclaw-ai/core';
+
+const pipeline = new GuardrailPipeline();
+pipeline.addInputGuardrail(new PromptInjectionDetector());
+pipeline.addInputGuardrail(new TopicScopeGuard());
+pipeline.addOutputGuardrail(new OutputSanitizer());
+
+const result = await pipeline.checkInput(userMessage, { tenantId, userId, sessionId, agentId });
+if (!result.passed) {
+  // Block the request
+}
+```
+
+### PromptInjectionDetector (LLM01)
+
+Detects 14 categories of prompt injection:
+- Instruction override (`ignore previous instructions`)
+- System prompt extraction (`reveal your system prompt`)
+- DAN / jailbreak attempts (`do anything now`)
+- Role manipulation (`you are now a hacker`)
+- Delimiter manipulation (`</system>`, `[INST]`)
+- Base64-encoded payloads
+- Data exfiltration attempts
+- Indirect injection via tool output
+
+Scoring: Each pattern has a weight (high=0.9, medium=0.5, low=0.2). If total score ≥ 0.8, input is blocked.
+
+### OutputSanitizer (LLM05, LLM07)
+
+Two-phase output check:
+1. **System prompt leakage** — Detects phrases like "my system prompt is", "I was instructed to". If detected, entire response is blocked.
+2. **XSS sanitization** — Strips `<script>`, `<iframe>`, `javascript:` URIs, event handler attributes. Returns sanitized content.
+
+### TopicScopeGuard (LLM06)
+
+Prevents agents from answering out-of-domain questions when a domain pack is active:
+- Healthcare agent → blocks finance/trading terms
+- Finance agent → blocks medical/drug terms
+- Only activates when `domainId` is set in the guardrail context
+
+---
+
+## 4. Multi-Tenant Data Isolation
+
+### RAG / Knowledge Base Isolation (LLM08)
+
+Every document in the knowledge base is tagged with `tenantId`. All queries enforce tenant scope:
+
+```typescript
+// Ingestion — documents are tagged with tenant
+await rag.ingestText(text, title, source, { tenantId: 'tenant-123' });
+
+// Retrieval — only returns documents owned by the calling tenant
+const results = await rag.retrieve(query, topK, collectionId, 'tenant-123');
+
+// Listing — filtered by tenant
+const docs = rag.listDocuments({ tenantId: 'tenant-123' });
+const stats = rag.getStats('tenant-123');
+const collections = rag.listCollections('tenant-123');
+```
+
+### Session / Conversation Isolation
+
+- **Session creation**: `getOrCreateSession()` verifies tenantId matches existing session
+- **Session retrieval** (`GET /conversations/:id`): Checks `session.tenantId === requesterTenantId`
+- **Session update** (`PUT /conversations/:id`): MongoDB query includes `tenantId` filter
+- **Session deletion** (`DELETE /conversations/:id`): Only deletes if `tenantId` matches
+- **Session listing** (`GET /conversations`): Queries with `{ tenantId }` filter
+
+### Agent / Memory / Audit Isolation
+
+- Agent configs stored per-tenant in MongoDB
+- Memory entries scoped by `tenantId`
+- Activity logs include `tenantId` for audit trail
+
+---
+
+## 5. Rate Limiting (LLM10)
+
+Sliding-window rate limiter per tenant, running in-memory:
+
+```typescript
+import { LLMRateLimiter } from '@xclaw-ai/core';
+
+const limiter = new LLMRateLimiter(60, 60_000); // 60 requests per 60 seconds
+
+const check = limiter.check('tenant-123');
+if (!check.allowed) {
+  // Return 429 with retryAfterMs
+}
+```
+
+- Default: 60 LLM requests per tenant per minute
+- Configurable per tier (free/pro/enterprise)
+- Automatic cleanup of stale windows every 5 minutes
+
+---
+
+## 6. PII Detection & Redaction (LLM02)
+
+Built-in PII scanner in `packages/gateway/src/pii.ts`:
+
+| Pattern | Description |
+|---------|-------------|
+| Email | Standard email addresses |
+| Phone (VN) | Vietnamese phone numbers (10-11 digits, 0xx/+84) |
+| CCCD/CMND | Vietnamese citizen ID (9 or 12 digits) |
+| Credit Card | Standard credit card patterns |
+| IP Address | IPv4 addresses |
+| SSN | US Social Security Numbers |
+| VN Address | Vietnamese address patterns |
+| Passport | Passport number patterns |
+| Date of Birth | Common DOB formats |
+
+PII is redacted before storage in MongoDB, preserving the hash for de-duplication.
+
+---
+
+## 7. Streaming Security
+
+For streaming (SSE) endpoints, security is applied in two phases:
+
+1. **Pre-stream** (synchronous): Rate limiting + input guardrails run before any tokens are sent. If blocked, the request is rejected with a JSON error.
+
+2. **Post-stream** (asynchronous): After all tokens have been streamed, the accumulated response is checked against output guardrails. If the check fails, a `security-warning` meta event is emitted:
+
+```json
+{
+  "type": "meta",
+  "key": "security-warning",
+  "data": { "blocked": true, "reason": "System prompt leakage detected" }
+}
+```
+
+The frontend should handle this event and optionally hide or flag the response.
+
+---
+
+## 8. Security Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `RATE_LIMIT_PER_MINUTE` | Max LLM calls per tenant per minute | `60` |
+| `GUARDRAIL_INJECTION_THRESHOLD` | Prompt injection score threshold (0-1) | `0.8` |
+
+### Per-Tenant Overrides
+
+Rate limits and guardrail sensitivity can be adjusted per tenant tier via `tenantSettings`:
+
+```typescript
+// In tenant settings (PostgreSQL)
+{
+  rateLimitPerMinute: 120,    // Pro tier
+  guardrailStrictMode: true,  // Extra strict PII + injection detection
+}
+```
+
+---
+
+## 9. Security Monitoring & Audit
+
+All LLM calls are logged to MongoDB (`llm_logs` collection) with:
+- `tenantId`, `userId`, `sessionId`
+- `provider`, `model`
+- Token counts, cost estimation, duration
+- `streaming` flag, `toolCalls` count
+- Success/failure status
+
+Activity logger middleware records all API calls with tenant context for audit trail.
+
+---
+
+## 10. Production Security Checklist
+
+- [ ] All knowledge base documents tagged with `tenantId`
+- [ ] RAG queries always include `tenantId` filter
+- [ ] Session CRUD verifies tenant ownership
+- [ ] Rate limiter configured per tenant tier
+- [ ] Input guardrails enabled (prompt injection + topic scope)
+- [ ] Output guardrails enabled (XSS + system prompt leakage)
+- [ ] PII scanner active on message storage
+- [ ] LLM logs collected for audit
+- [ ] Activity logger middleware enabled
+- [ ] CORS origins restricted per environment
+- [ ] JWT secret rotated regularly
+- [ ] MongoDB connection uses TLS in production
+- [ ] PostgreSQL connections use SSL in production

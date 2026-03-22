@@ -57,3 +57,11 @@ Plugins are **not** inside `packages/`. They live in external repos linked as gi
 - **Always use Docker Compose**: `docker compose up --build`
 - Do NOT run `npm run build` or `npm test` directly on host
 - View logs: `docker compose logs -f xclaw`
+
+## Security (DevSecOps)
+
+- **Guardrails**: `packages/core/src/guardrails/` — prompt injection detector, output sanitizer, topic scope guard, rate limiter
+- **Scan scripts**: `deploy/scripts/security-scan.sh` (full|deps|secrets|container|sast|config|ai), `deploy/scripts/secret-scan.sh` (quick|deep|pre-commit)
+- **Runbooks**: `deploy/runbooks/security-incident.md`
+- **CI security pipeline**: npm audit + Gitleaks + Trivy in `.github/workflows/ci.yml`
+- **Agent**: `.github/agents/devsecops.agent.md` — DevSecOps agent for security audits and incident response

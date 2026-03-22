@@ -55,6 +55,10 @@ RUN npx tsc -b packages/shared && \
 FROM base AS runner
 ENV NODE_ENV=production
 
+# Run as non-root user for security
+RUN addgroup -g 1001 -S xclaw && \
+    adduser -S xclaw -u 1001 -G xclaw
+
 # Copy built artifacts
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
@@ -91,6 +95,7 @@ COPY --from=builder /app/packages/server/dist ./packages/server/dist
 COPY --from=builder /app/packages/server/package.json ./packages/server/
 COPY --from=builder /app/package.json ./
 
+USER xclaw
 EXPOSE 3000
 
 CMD ["node", "packages/server/dist/index.js"]

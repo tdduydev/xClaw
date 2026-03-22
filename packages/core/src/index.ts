@@ -59,6 +59,14 @@ export type { RerankerResult, RerankerOptions } from './rag/reranker.js';
 // Tracing
 export { Tracer } from './tracing/tracer.js';
 
+// Guardrails (AI Security — OWASP LLM Top 10)
+export { GuardrailPipeline } from './guardrails/guardrail-pipeline.js';
+export { PromptInjectionDetector } from './guardrails/prompt-injection-detector.js';
+export { OutputSanitizer } from './guardrails/output-sanitizer.js';
+export { TopicScopeGuard } from './guardrails/topic-scope-guard.js';
+export { LLMRateLimiter } from './guardrails/rate-limiter.js';
+export type { GuardrailResult, GuardrailContext, GuardrailPipelineResult, InputGuardrail, OutputGuardrail } from './guardrails/types.js';
+
 // Plugins
 export { PluginManager } from './plugins/plugin-manager.js';
 export type { PluginManagerDeps } from './plugins/plugin-manager.js';

@@ -1,0 +1,91 @@
+# ============================================================
+# xClaw Production Docker Compose
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ============================================================
+
+services:
+  # ─── PostgreSQL (production hardening) ──────────────────
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD in .env}
+    ports: [] # Remove external port exposure
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    command: >
+      postgres
+        -c shared_buffers=256MB
+        -c effective_cache_size=768MB
+        -c maintenance_work_mem=128MB
+        -c max_connections=100
+        -c log_min_duration_statement=200
+        -c log_statement=ddl
+
+  # ─── MongoDB (production hardening) ────────────────────
+  mongodb:
+    ports: [] # Remove external port exposure
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    command: >
+      mongod
+        --wiredTigerCacheSizeGB 0.5
+        --quiet
+
+  # ─── Redis (production hardening) ─────────────────────
+  redis:
+    ports: [] # Remove external port exposure
+    command: >
+      redis-server
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --save 900 1
+        --save 300 10
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ─── xClaw Server ────────────────────────────────────
+  xclaw:
+    image: ${XCLAW_SERVER_IMAGE:-ghcr.io/xdev-asia/xclaw-server:latest}
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=5001
+      - DATABASE_URL=postgresql://xclaw:${PG_PASSWORD}@postgres:5432/xclaw
+      - MONGODB_URL=mongodb://mongodb:27017/xclaw
+      - REDIS_URL=redis://redis:6379
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ─── Web Frontend ──────────────────────────────────────
+  web:
+    image: ${XCLAW_WEB_IMAGE:-ghcr.io/xdev-asia/xclaw-web:latest}
+    build: !reset null
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

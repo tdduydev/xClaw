@@ -1,0 +1,11 @@
+# Trivy Vulnerability Exceptions
+
+# Format: CVE-YYYY-NNNNN
+
+# Add accepted vulnerabilities with justification comments
+
+#
+
+# Example
+
+# CVE-2023-12345  # Low severity, not exploitable in our context — reviewed 2025-01-01

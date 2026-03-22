@@ -41,6 +41,8 @@ export interface KBCollection {
   documentCount: number;
   createdAt: string;
   updatedAt: string;
+  /** Tenant that owns this collection */
+  tenantId?: string;
 }
 
 export interface DocumentMeta {
@@ -53,6 +55,8 @@ export interface DocumentMeta {
   processingError?: string;
   wordCount: number;
   charCount: number;
+  /** Tenant that owns this document — used for cross-tenant isolation */
+  tenantId?: string;
 }
 
 export interface QueryHistoryEntry {
@@ -118,7 +122,7 @@ export class RagEngine {
 
   // ─── Collections ────────────────────────────────────────
 
-  createCollection(name: string, description?: string, color?: string): KBCollection {
+  createCollection(name: string, description?: string, color?: string, tenantId?: string): KBCollection {
     const col: KBCollection = {
       id: randomUUID(),
       name,
@@ -127,6 +131,7 @@ export class RagEngine {
       documentCount: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      tenantId,
     };
     this.collections.set(col.id, col);
     return col;
@@ -152,9 +157,11 @@ export class RagEngine {
     return true;
   }
 
-  listCollections(): KBCollection[] {
+  listCollections(tenantId?: string): KBCollection[] {
     this.refreshCollectionCounts();
-    return Array.from(this.collections.values());
+    const all = Array.from(this.collections.values());
+    if (!tenantId) return all;
+    return all.filter((c) => !c.tenantId || c.tenantId === tenantId);
   }
 
   getCollection(id: string): KBCollection | undefined {
@@ -180,6 +187,7 @@ export class RagEngine {
       collectionId?: string;
       customMetadata?: Record<string, string>;
       chunkingOptions?: ChunkingOptions;
+      tenantId?: string;
     },
   ): Promise<RagDocument> {
     const chunkOpts = options?.chunkingOptions ?? this.config.chunkingOptions;
@@ -192,6 +200,7 @@ export class RagEngine {
       processingStatus: 'processing',
       wordCount: text.split(/\s+/).length,
       charCount: text.length,
+      tenantId: options?.tenantId,
     };
 
     const doc = this.processor.processText(text, title, source ?? 'upload', chunkOpts);
@@ -222,6 +231,7 @@ export class RagEngine {
     collectionId?: string;
     customMetadata?: Record<string, string>;
     chunkingOptions?: ChunkingOptions;
+    tenantId?: string;
   }): Promise<RagDocument> {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch URL: ${res.status} ${res.statusText}`);
@@ -402,7 +412,7 @@ export class RagEngine {
 
   // ─── Retrieval ──────────────────────────────────────────
 
-  async retrieve(query: string, topK?: number, collectionId?: string | null): Promise<RetrievalResult> {
+  async retrieve(query: string, topK?: number, collectionId?: string | null, tenantId?: string): Promise<RetrievalResult> {
     const k = topK ?? this.config.topK;
     const [queryEmbedding] = await this.embeddings.embed([query]);
     let results = await this.vectorStore.search(queryEmbedding, k * 3);
@@ -411,6 +421,14 @@ export class RagEngine {
       const meta = this.documentMeta.get(r.chunk.documentId);
       return meta?.enabled !== false;
     });
+
+    // Tenant isolation: only return documents owned by the requesting tenant
+    if (tenantId) {
+      results = results.filter((r) => {
+        const meta = this.documentMeta.get(r.chunk.documentId);
+        return meta?.tenantId === tenantId;
+      });
+    }
 
     if (collectionId) {
       results = results.filter((r) => {
@@ -506,8 +524,12 @@ ${context}
 
   // ─── Stats & Analytics ─────────────────────────────────
 
-  getStats(): KnowledgeBaseStats {
-    const docs = Array.from(this.documents.values()).map((d) => ({
+  getStats(tenantId?: string): KnowledgeBaseStats {
+    let docEntries = Array.from(this.documents.entries());
+    if (tenantId) {
+      docEntries = docEntries.filter(([id]) => this.documentMeta.get(id)?.tenantId === tenantId);
+    }
+    const docs = docEntries.map(([, d]) => ({
       id: d.id,
       title: d.title,
       source: d.source,
@@ -515,21 +537,34 @@ ${context}
       createdAt: d.createdAt,
     }));
 
+    const metaEntries = tenantId
+      ? Array.from(this.documentMeta.entries()).filter(([, m]) => m.tenantId === tenantId)
+      : Array.from(this.documentMeta.entries());
+
     return {
-      totalDocuments: this.documents.size,
-      totalChunks: this.vectorStore.count(),
-      totalCollections: this.collections.size,
-      totalEnabledDocuments: Array.from(this.documentMeta.values()).filter((m) => m.enabled).length,
+      totalDocuments: docs.length,
+      totalChunks: docs.reduce((sum, d) => sum + d.chunkCount, 0),
+      totalCollections: this.listCollections(tenantId).length,
+      totalEnabledDocuments: metaEntries.filter(([, m]) => m.enabled).length,
       documents: docs,
     };
   }
 
-  getDocument(id: string): RagDocument | undefined {
-    return this.documents.get(id);
+  getDocument(id: string, tenantId?: string): RagDocument | undefined {
+    const doc = this.documents.get(id);
+    if (!doc) return undefined;
+    if (tenantId) {
+      const meta = this.documentMeta.get(id);
+      if (meta?.tenantId && meta.tenantId !== tenantId) return undefined;
+    }
+    return doc;
   }
 
-  getDocumentMeta(id: string): DocumentMeta | undefined {
-    return this.documentMeta.get(id);
+  getDocumentMeta(id: string, tenantId?: string): DocumentMeta | undefined {
+    const meta = this.documentMeta.get(id);
+    if (!meta) return undefined;
+    if (tenantId && meta.tenantId && meta.tenantId !== tenantId) return undefined;
+    return meta;
   }
 
   listDocuments(options?: {
@@ -538,8 +573,14 @@ ${context}
     source?: string;
     enabled?: boolean;
     search?: string;
+    tenantId?: string;
   }): Array<Omit<RagDocument, 'chunks'> & { chunkCount: number; meta: DocumentMeta }> {
     let docs = Array.from(this.documents.entries());
+
+    // Tenant isolation: only show documents owned by this tenant
+    if (options?.tenantId) {
+      docs = docs.filter(([id]) => this.documentMeta.get(id)?.tenantId === options.tenantId);
+    }
 
     if (options?.collectionId) {
       docs = docs.filter(([id]) => this.documentMeta.get(id)?.collectionId === options.collectionId);
@@ -651,6 +692,7 @@ ${context}
     tags?: string[];
     collectionId?: string;
     chunkingOptions?: ChunkingOptions;
+    tenantId?: string;
   }): AsyncGenerator<CrawlProgress & { ingested: number }> {
     const crawler = new WebCrawler(crawlOptions);
     let ingested = 0;
@@ -664,6 +706,7 @@ ${context}
               tags: [...(ingestOptions?.tags ?? []), 'web-crawl'],
               collectionId: ingestOptions?.collectionId,
               chunkingOptions: ingestOptions?.chunkingOptions,
+              tenantId: ingestOptions?.tenantId,
               customMetadata: { sourceUrl: page.url, importType: 'web-crawl', crawlDepth: String(page.depth) },
             });
           } catch { /* skip failed ingestion */ }
@@ -679,7 +722,7 @@ ${context}
 
   async searchWithReranking(
     query: string,
-    options?: { topK?: number; collectionId?: string; rerankerOptions?: RerankerOptions },
+    options?: { topK?: number; collectionId?: string; rerankerOptions?: RerankerOptions; tenantId?: string },
   ): Promise<RerankerResult[]> {
     // Cast topK wider to get candidates for re-ranking
     const candidateK = Math.max((options?.topK ?? 5) * 3, 15);
@@ -688,8 +731,17 @@ ${context}
       candidateK,
     );
 
-    // Filter by collection if needed
+    // Filter by tenant and collection
     let filteredResults = vectorResults;
+
+    // Tenant isolation
+    if (options?.tenantId) {
+      filteredResults = filteredResults.filter((r) => {
+        const meta = this.documentMeta.get(r.chunk.documentId);
+        return meta?.tenantId === options.tenantId;
+      });
+    }
+
     if (options?.collectionId) {
       const docsInCol = new Set<string>();
       for (const [docId, meta] of this.documentMeta.entries()) {

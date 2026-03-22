@@ -1,0 +1,484 @@
+---
+title: AI Production Standard
+description: Production-grade AI features checklist for xClaw — guardrails, cost control, observability, fallback, and more.
+---
+
+# AI Production Standard — xClaw AI Agent Platform
+
+This document covers AI-specific production concerns that go beyond basic provider configuration. For provider setup, see [AI Providers](/docs/ai-providers).
+
+## 1. What's Implemented
+
+| Feature | Status | Package |
+|---------|--------|---------|
+| 10 LLM providers | ✅ | `packages/core/src/llm` |
+| RAG pipeline (chunk → embed → rerank → retrieve) | ✅ | `packages/core/src/rag` |
+| Hybrid search (vector + keyword BM25) | ✅ | `packages/core/src/rag/hybrid-search.ts` |
+| Distributed tracing (custom spans) | ✅ | `packages/core/src/tracing/tracer.ts` |
+| Agent memory (short-term + persistent) | ✅ | `packages/core/src/memory` |
+| Image generation (10+ models, 4 providers) | ✅ | `packages/core/src/image` |
+| Multi-modal content types | ✅ | `packages/core/src/rag/document-processor.ts` |
+| Streaming (SSE) | ✅ | `packages/core/src/streaming` |
+| Workflow graph engine | ✅ | `packages/core/src/graph/graph-engine.ts` |
+| Skill plugin system | ✅ | `packages/skills`, `packages/skill-hub` |
+
+## 2. Missing Features (Roadmap)
+
+The following are **production requirements** for 2026-grade AI agent platforms that xClaw needs to implement:
+
+| Feature | Priority | Effort |
+|---------|----------|--------|
+| [Guardrails](#3-guardrails) | 🔴 Critical | Medium |
+| [Model Fallback / Circuit Breaker](#4-model-fallback--circuit-breaker) | 🔴 Critical | Small |
+| [Token Cost Tracking & Budget](#5-token-cost-tracking--budget) | 🔴 Critical | Medium |
+| [Prompt Versioning & Management](#6-prompt-versioning--management) | 🟡 High | Medium |
+| [Human-in-the-Loop](#7-human-in-the-loop-hitl) | 🟡 High | Large |
+| [LLM Observability Integration](#8-llm-observability) | 🟡 High | Medium |
+| [RAG Evaluation Pipeline](#9-rag-evaluation) | 🟡 High | Medium |
+| [A2A Protocol](#10-agent-to-agent-a2a-protocol) | 🟢 Medium | Large |
+| [Context Engineering](#11-context-engineering) | 🟢 Medium | Small |
+| [PII Detection & Redaction](#12-pii-detection--redaction) | 🔴 Critical | Medium |
+
+---
+
+## 3. Guardrails
+
+Guardrails add safety layers between user input/agent output and the LLM. Without them, agents are a data exfiltration and hallucination risk.
+
+### Input Guardrails (before LLM call)
+- Block prompt injection attempts
+- Detect and redact PII (phone, CCCD, health data)
+- Content policy filter (hate speech, NSFW)
+- Topic scope enforcement (e.g., healthcare agent only answers medical questions)
+
+### Output Guardrails (after LLM response)
+- Hallucination detection via citation check
+- Confidence threshold — low-confidence answers trigger "I don't know"
+- PII leak detection (catch if LLM accidentally surfaces private data)
+- Format validation (JSON schema check for structured outputs)
+
+### Implementation Pattern
+
+```typescript
+// packages/core/src/guardrails/guardrail-pipeline.ts (to be created)
+
+interface GuardrailResult {
+  pass: boolean;
+  blocked?: string;   // reason if blocked
+  modified?: string;  // redacted version
+}
+
+interface InputGuardrail {
+  check(input: string, context: AgentContext): Promise<GuardrailResult>;
+}
+
+// Usage in Agent.run():
+for (const guard of this.inputGuardrails) {
+  const result = await guard.check(userMessage, ctx);
+  if (!result.pass) {
+    return { blocked: true, reason: result.blocked };
+  }
+}
+```
+
+### Recommended Stack
+
+| Layer | Tool | Purpose |
+|-------|------|---------|
+| Input filter | NeMo Guardrails / custom regex | Policy enforcement |
+| PII detection | `packages/ml` custom NER | Redact before LLM sees data |
+| Output check | LLM-as-judge (GPT-4o-mini) | Hallucination / relevance scoring |
+| Latency budget | ≤ 200ms for input, async for output | Keep UX snappy |
+
+---
+
+## 4. Model Fallback / Circuit Breaker
+
+If a provider is down or rate-limited, agent calls should automatically retry a fallback model.
+
+### Fallback Chain
+
+```typescript
+// Priority order per use case
+const FALLBACK_CHAINS = {
+  default:   ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'groq/llama-3.1-70b'],
+  fast:      ['groq/llama-3.1-70b', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat'],
+  reasoning: ['anthropic/claude-3.5-sonnet', 'openai/o1-mini', 'google/gemini-pro'],
+  cheap:     ['deepseek/deepseek-chat', 'groq/llama-3.1-70b', 'ollama/llama3.2'],
+};
+```
+
+### Circuit Breaker States
+
+```
+CLOSED → normal operation
+  ↓ (failure rate > 50% in 60s)
+OPEN → reject immediately, use fallback
+  ↓ (after 30s cooldown)
+HALF-OPEN → try 1 request
+  ↓ (success)
+CLOSED
+  ↓ (failure)
+OPEN
+```
+
+### Key Metrics to Track
+- Provider error rate per 60s window
+- p95 latency per provider
+- Rate limit hit frequency
+- Fallback trigger count
+
+---
+
+## 5. Token Cost Tracking & Budget
+
+Every LLM call consumes tokens which cost money. Without tracking, a single runaway agent can burn through budget.
+
+### Cost Model
+
+Track per call:
+```typescript
+interface LLMUsageRecord {
+  tenantId: string;
+  agentId: string;
+  provider: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;        // calculated from token prices
+  timestamp: Date;
+}
+```
+
+### Approximate Token Prices (March 2026)
+
+| Model | Input (per 1M) | Output (per 1M) |
+|-------|---------------|----------------|
+| `gpt-4o` | $2.50 | $10.00 |
+| `claude-3.5-sonnet` | $3.00 | $15.00 |
+| `gemini-pro` | $1.25 | $5.00 |
+| `deepseek-chat` | $0.27 | $1.10 |
+| `groq/llama-3.1-70b` | $0.59 | $0.79 |
+| `ollama/*` | $0 | $0 |
+
+### Budget Enforcement
+
+```typescript
+// Per-tenant daily budget in tenantSettings table (already exists)
+// Add: currentDaySpend tracking
+
+if (tenant.dailyLLMBudgetUsd && usage.costUsd + tenant.currentDaySpend > tenant.dailyLLMBudgetUsd) {
+  throw new BudgetExceededError(`Daily LLM budget $${tenant.dailyLLMBudgetUsd} exceeded`);
+}
+```
+
+Budget alerts: 50% / 80% / 100% consumed → notify via webhook.
+
+---
+
+## 6. Prompt Versioning & Management
+
+Prompts are code. They need versioning, A/B testing, and rollback — just like software.
+
+### What to Version
+
+- System prompts for each agent/skill
+- RAG query expansion templates
+- Output format instructions
+- Domain-specific language overrides (Vietnamese vs English)
+
+### Storage Pattern
+
+```typescript
+// Store in MongoDB agent_configs collection (already exists)
+interface PromptVersion {
+  agentId: string;
+  version: number;        // auto-increment
+  prompt: string;
+  description: string;
+  createdBy: string;
+  createdAt: Date;
+  isActive: boolean;
+  metrics?: {
+    avgResponseQuality: number;  // 0-1 from user feedback
+    avgLatencyMs: number;
+    sampleCount: number;
+  };
+}
+```
+
+### A/B Testing
+
+Split traffic 90/10 between prompt versions, collect quality scores, promote winner after 100 samples minimum.
+
+---
+
+## 7. Human-in-the-Loop (HITL)
+
+For high-risk actions (booking, payment, data deletion), agents must pause and request human approval before executing.
+
+### Risk Classification
+
+| Risk Level | Examples | Action |
+|------------|---------|--------|
+| **Low** | Read data, answer questions | Auto-approve |
+| **Medium** | Send emails, create records | Notify user, 30s override window |
+| **High** | Delete data, financial transactions | Require explicit confirmation |
+| **Critical** | Bulk operations, external API calls with side effects | Require manager approval |
+
+### Interrupt Pattern
+
+```typescript
+// Agent pauses at tool call
+const approval = await hitlGate.requestApproval({
+  agentId,
+  action: 'delete_patient_record',
+  params: { patientId: '123' },
+  riskLevel: 'high',
+  timeoutMs: 300_000,  // 5 min timeout
+});
+
+if (!approval.approved) {
+  return { cancelled: true, reason: approval.reason };
+}
+```
+
+### Approval Channels
+
+- **Web UI** — approval notification in dashboard
+- **Messenger channels** — send approval request to Telegram/Slack
+- **Email** — for async approvals with magic-link confirm
+
+---
+
+## 8. LLM Observability
+
+xClaw has a basic span `Tracer` but lacks **LLM-specific observability** — token counts, prompt content, quality scoring.
+
+### What to Capture Per LLM Call
+
+```typescript
+interface LLMTrace {
+  spanId: string;
+  traceId: string;
+  provider: string;
+  model: string;
+  systemPrompt: string;     // hashed in prod for privacy
+  userMessage: string;
+  retrievedContext?: string; // RAG context
+  response: string;
+  tokenUsage: { prompt: number; completion: number };
+  costUsd: number;
+  latencyMs: number;
+  qualityScore?: number;    // from user feedback or LLM-as-judge
+  timestamp: Date;
+}
+```
+
+### Integration Options
+
+| Tool | Self-host | Cost | Best For |
+|------|-----------|------|---------|
+| **Langfuse** | ✅ Yes | Free OSS | Prompt management + tracing |
+| **LangSmith** | ❌ No | $39/seat | Agent debugging + evals |
+| **Helicone** | ✅ Yes | Free tier | Low-latency proxy, cost tracking |
+| **OpenTelemetry → Jaeger** | ✅ Yes | Free | Distributed tracing integration |
+
+**Recommendation**: Self-host Langfuse (Docker) — aligns with xClaw's self-hosted philosophy.
+
+```bash
+# Add to docker-compose.yml
+langfuse:
+  image: langfuse/langfuse:2
+  environment:
+    DATABASE_URL: postgresql://...
+    NEXTAUTH_SECRET: ...
+  ports:
+    - "3001:3000"
+```
+
+---
+
+## 9. RAG Evaluation
+
+The RAG pipeline (rag-engine, reranker, hybrid-search) is implemented but there's **no way to measure if retrieval is actually good**.
+
+### Key Metrics to Track
+
+| Metric | Definition | Target |
+|--------|-----------|--------|
+| **Context Precision** | Retrieved chunks actually relevant to query | > 0.75 |
+| **Context Recall** | All relevant chunks were retrieved | > 0.70 |
+| **Faithfulness** | Answer only uses retrieved context (no hallucination) | > 0.85 |
+| **Answer Relevancy** | Answer actually addresses the question | > 0.80 |
+
+### Evaluation Pipeline
+
+```typescript
+// packages/core/src/rag/rag-evaluator.ts (to be created)
+
+interface RAGEvalResult {
+  query: string;
+  contextPrecision: number;
+  contextRecall: number;
+  faithfulness: number;
+  answerRelevancy: number;
+}
+
+// Run nightly on sample production queries
+// Alert if any metric drops > 10% week-over-week
+```
+
+### Tools
+
+- **RAGAS** (Python) — gold standard RAG evaluation library
+- **DeepEval** — pytest-style, CI/CD integration
+- Manual golden dataset: 50–100 manually verified Q&A pairs per domain pack
+
+---
+
+## 10. Agent-to-Agent (A2A) Protocol
+
+Google's A2A protocol (2025) enables AI agents from different platforms to collaborate. As of 2026, it's becoming the standard for multi-agent interoperability.
+
+### A2A Architecture
+
+```
+xClaw Agent (Orchestrator)
+  ├── Sub-agent: ResearchAgent (internal skill)
+  ├── Sub-agent: CodeAgent (external A2A endpoint)
+  └── Sub-agent: HealthcareAgent (xclaw-plugins)
+```
+
+Each agent exposes an **Agent Card** (JSON) at `/.well-known/agent.json`:
+
+```json
+{
+  "name": "xClaw Healthcare Agent",
+  "description": "Medical Q&A with ICD-10 knowledge",
+  "url": "https://xclaw.io/api/a2a/healthcare",
+  "capabilities": ["text", "tool_use"],
+  "authentication": { "type": "bearer" },
+  "skills": ["diagnosis-assist", "drug-interactions", "icd10-lookup"]
+}
+```
+
+### Implementation Plan
+
+1. Expose `GET /.well-known/agent.json` for each tenant's agents
+2. Add `POST /api/a2a/{agentId}/tasks` endpoint (A2A task format)
+3. Implement A2A client in `packages/core/src/agent/agent.ts` to call external agents
+4. Authentication: JWT bearer tokens between agents
+
+---
+
+## 11. Context Engineering
+
+Context engineering = deliberately designing what goes into the LLM context window to maximize quality and minimize cost.
+
+### Context Budget (128k token window)
+
+```
+┌─────────────────────────────────────────────────┐
+│ System Prompt            ~2,000 tokens  (1.5%)  │
+│ Agent Persona + Rules    ~1,000 tokens  (0.8%)  │
+│ Conversation History     ~8,000 tokens  (6.2%)  │
+│ RAG Retrieved Context   ~20,000 tokens (15.6%)  │
+│ Tool Definitions         ~2,000 tokens  (1.5%)  │
+│ User Message             ~1,000 tokens  (0.8%)  │
+│ ──────────────────────────────────────────────  │
+│ Total Used              ~34,000 tokens (26.5%)  │
+│ Buffer for response     ~94,000 tokens (73.5%)  │
+└─────────────────────────────────────────────────┘
+```
+
+### Best Practices
+
+- **Conversation compression**: Summarize history > 5 turns instead of sending raw messages
+- **Dynamic RAG**: Only include retrieved context if similarity score > 0.7
+- **Tool pruning**: Only send relevant tool definitions (skill tags matching query intent)
+- **Persona caching**: System prompts don't change — prefix-cache in Claude/GPT to reduce cost ~90%
+
+### Context Overflow Handling
+
+```typescript
+if (estimatedTokens > model.contextLimit * 0.9) {
+  // 1. Summarize old conversation turns
+  // 2. Reduce RAG chunks from 10 → 5
+  // 3. Drop lowest-similarity chunks
+  // 4. If still over limit → error with clear message
+}
+```
+
+---
+
+## 12. PII Detection & Redaction
+
+For healthcare, finance, and HR domains — user data may contain PII that should never reach LLM providers or be stored in logs.
+
+### PII Categories (Vietnam-specific)
+
+| Category | Examples | Required Treatment |
+|----------|---------|-------------------|
+| CCCD/CMND | 12-digit ID number | Redact before LLM |
+| Phone number | +84xxx, 0xxx | Redact or tokenize |
+| Full name + DOB | Combined = PII | Context-aware redact |
+| Medical record ID | BN-YYYYXXX | Tenant-local only |
+| Financial account | Bank account numbers | Always redact |
+
+### Implementation
+
+```typescript
+// packages/ml/src/pii-detector.ts (already in packages/ml — extend it)
+
+interface PIIResult {
+  original: string;
+  redacted: string;     // e.g., "[CCCD]" or "[PHONE]"
+  detectedTypes: string[];
+  positions: Array<{ start: number; end: number; type: string }>;
+}
+```
+
+### Data Residency
+
+For healthcare tenants (HIPAA-adjacent):
+- Do NOT send PII to US-hosted LLM providers unless BAA signed
+- Use local Ollama models for PII-containing queries
+- Log PII handling decisions in audit log (existing `GET /api/monitoring/audit`)
+
+---
+
+## 13. AI-Specific Metrics (extend Section 7 of DevOps Standard)
+
+These supplement the general operational metrics with AI-specific signals:
+
+| Metric | Warning | Critical | Notes |
+|--------|---------|----------|-------|
+| LLM error rate | > 2% | > 10% | Provider errors, not app errors |
+| Average response latency (TTFT) | > 2s | > 5s | Time-to-first-token |
+| RAG context precision | < 0.65 | < 0.50 | Nightly eval job |
+| Hallucination rate | > 5% | > 15% | LLM-as-judge sampling |
+| Daily token spend vs budget | > 70% | > 95% | Per-tenant |
+| Guardrail block rate | > 10% | > 30% | High = policy needs tuning |
+| Fallback trigger rate | > 5% | > 20% | Provider reliability signal |
+
+---
+
+## 14. AI Feature Checklist (Production Readiness)
+
+Use this before launching a new agent or domain pack in production:
+
+- [ ] Input guardrails configured for the domain
+- [ ] Output guardrail (hallucination check) enabled
+- [ ] PII detection enabled if handling personal data
+- [ ] Fallback model chain defined
+- [ ] Token budget set per tenant
+- [ ] System prompt versioned and reviewed
+- [ ] RAG golden dataset created (≥ 50 Q&A pairs)
+- [ ] RAG evaluation baseline metrics recorded
+- [ ] HITL gates configured for high-risk tool calls
+- [ ] LLM traces flowing to observability platform
+- [ ] Cost tracking dashboard reviewed
+- [ ] Load test: 100 concurrent agent sessions
+- [ ] Agent Card published at `/.well-known/agent.json`

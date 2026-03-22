@@ -1,0 +1,484 @@
+---
+title: DevOps Standard
+description: DevOps standards and operational guide for the xClaw AI Agent Platform
+---
+
+# DevOps Standard — xClaw AI Agent Platform
+
+## 1. Directory Structure
+
+```
+xClaw/
+├── docker-compose.yml              # Dev environment
+├── docker-compose.prod.yml         # Production overrides
+├── Dockerfile                      # Server (multi-stage, non-root)
+├── .env.example                    # Dev env template
+├── .dockerignore
+│
+├── deploy/                         # ★ All operational files
+│   ├── scripts/
+│   │   ├── deploy.sh               # Deploy helper (dev/staging/prod)
+│   │   ├── rollback.sh             # Rollback to a previous image
+│   │   ├── health-check.sh         # Verify health endpoints
+│   │   ├── backup-postgres.sh      # PostgreSQL backup
+│   │   └── backup-mongodb.sh       # MongoDB backup
+│   ├── runbooks/
+│   │   ├── deployment.md           # Deployment procedures
+│   │   ├── rollback.md             # When & how to rollback
+│   │   ├── disaster-recovery.md    # DR plan & restore steps
+│   │   └── incident-response.md    # Incident triage & escalation
+│   └── env/
+│       └── .env.production.example # Production env template
+│
+├── packages/web/
+│   ├── Dockerfile                  # Web frontend (Nginx)
+│   └── nginx.conf                  # SPA + API proxy
+│
+├── scripts/
+│   └── publish-all.sh              # npm publish (not deploy-related)
+│
+└── .github/
+    ├── agents/
+    │   └── devops.agent.md         # ★ DevOps AI agent
+    ├── skills/
+    │   └── devops/SKILL.md         # ★ DevOps skill for Copilot
+    ├── instructions/
+    │   └── devops.instructions.md  # Auto-applied for Docker/deploy files
+    ├── workflows/
+    │   ├── ci.yml                  # CI: lint, typecheck, security, Docker build
+    │   ├── docker-publish.yml      # CD: build & push images to GHCR
+    │   ├── packages-publish.yml    # npm package publish
+    │   └── docs-*.yml              # Docs CI/CD
+    └── dependabot.yml              # Auto dependency updates
+```
+
+## 2. CI/CD Pipeline
+
+### CI — Runs on every PR and push to main/develop
+
+| Job | Purpose |
+|-----|---------|
+| **Lint** | ESLint across all packages |
+| **TypeCheck** | `tsc -b` in dependency order |
+| **Security Audit** | `npm audit --omit=dev` |
+| **Docker Build** | Verify Dockerfiles build successfully |
+| **Trivy Scan** | Container vulnerability scanning (blocks on CRITICAL) |
+
+### CD — Image Publishing
+
+Triggers: push to `main`, tags `v*`
+
+- Builds `xclaw-server` and `xclaw-web` images
+- Pushes to GHCR with tags: `latest`, `v2.1.0`, `sha-abc1234`
+- Multi-platform: `linux/amd64` + `linux/arm64`
+- GHA build cache for fast rebuilds
+
+### Build Order (dependency graph)
+
+```
+shared → db → core → integrations → domains → ml
+                  ↘ skills → skill-hub
+                  ↘ channels/*
+                              ↘ gateway → server
+```
+
+## 3. Environments
+
+| Environment | Branch | Compose Command | DB Ports |
+|-------------|--------|----------------|----------|
+| Development | feature/* | `docker compose up --build` | Exposed |
+| Staging | develop | `docker compose -f ... -f ...prod.yml up -d` | Internal |
+| Production | main (tags) | `docker compose -f ... -f ...prod.yml up -d` | Internal |
+
+Production overrides include:
+- Closed database ports (internal Docker network only)
+- Resource limits (memory, CPU caps)
+- Pre-built GHCR images instead of local build
+- PostgreSQL tuning (shared_buffers, connection limits)
+- JSON log rotation (50MB × 5 files)
+
+## 4. Health Checks
+
+| Endpoint | Type | Checks |
+|----------|------|--------|
+| `GET /health` | Liveness | App is running (uptime, version) |
+| `GET /health/ready` | Readiness | PostgreSQL + MongoDB connections alive |
+| `GET /health/deep` | Deep | PG latency, Mongo latency, memory usage |
+
+Deep health response:
+```json
+{
+  "status": "ok | degraded | unhealthy",
+  "version": "2.1.0",
+  "uptime": 86400,
+  "checks": {
+    "postgres": { "status": "ok", "latency_ms": 2 },
+    "mongodb": { "status": "ok", "latency_ms": 5 },
+    "memory": { "status": "ok", "latency_ms": 0 }
+  },
+  "memory": { "used_mb": 256, "heap_mb": 180 }
+}
+```
+
+## 5. Database Operations
+
+### Migrations
+- Auto-run on server startup via `runMigrations()`
+- Forward-only (revert = new migration that undoes changes)
+- Always test on staging before production
+
+### Backups
+
+| Database | Script | Default Output | Retention |
+|----------|--------|---------------|-----------|
+| PostgreSQL | `deploy/scripts/backup-postgres.sh` | `./backups/postgres/` | 30 days |
+| MongoDB | `deploy/scripts/backup-mongodb.sh` | `./backups/mongodb/` | 30 days |
+| Redis | Not backed up | — | Cache only |
+
+### Restore
+
+```bash
+# PostgreSQL
+pg_restore -h $PG_HOST -U xclaw -d xclaw < backup.dump
+
+# MongoDB
+mongorestore --uri="$MONGODB_URL" --gzip --drop dump/
+```
+
+## 6. Security
+
+### Container Security
+- Non-root user `xclaw` (UID 1001) in server Dockerfile
+- Trivy scan in CI (blocks on CRITICAL vulnerabilities)
+- `.dockerignore` excludes node_modules, .git, .env
+- Base images updated via Dependabot
+
+### Network Security
+- Database ports closed in production (Docker internal network)
+- Nginx handles SSL termination
+- CORS restricted to configured origins
+- Security headers in Nginx (cache-control, immutable assets)
+
+### Secret Management
+- `.env` files NEVER committed to git
+- `JWT_SECRET` must be ≥ 64 chars random (`openssl rand -hex 32`)
+- Production env template: `deploy/env/.env.production.example`
+- API keys rotated every 90 days
+
+## 7. Monitoring
+
+### Key Metrics
+
+| Metric | Warning | Critical |
+|--------|---------|----------|
+| API p95 response time | > 500ms | > 2000ms |
+| HTTP 5xx error rate | > 1% | > 5% |
+| CPU usage | > 70% | > 90% |
+| Memory usage | > 70% | > 90% |
+| Disk usage | > 70% | > 90% |
+
+### Existing Monitoring Routes
+
+- `GET /api/monitoring/metrics` — System metrics
+- `GET /api/monitoring/audit` — Audit logs
+- `GET /api/monitoring/logs` — System logs
+- `GET /api/monitoring/dashboard` — Health dashboard
+
+## 8. Deployment Flow
+
+```
+Developer pushes to main
+  ↓
+CI pipeline runs (lint → typecheck → security → Docker build → Trivy)
+  ↓ (all pass)
+docker-publish.yml builds & pushes images to GHCR
+  ↓
+Operator runs: ./deploy/scripts/deploy.sh production
+  ↓
+Script pulls images → restarts services → health check
+  ↓ (pass)
+Deploy complete ✅
+  ↓ (fail)
+./deploy/scripts/rollback.sh xclaw <previous-tag>
+```
+
+## 9. Copilot Integration
+
+### DevOps Agent (`@DevOps`)
+A specialized AI agent for DevOps tasks. Select it from the agent picker or delegate to it as a subagent. It knows all deploy scripts, runbooks, workflows, and Docker configurations.
+
+### DevOps Skill
+Automatically loaded when Copilot detects DevOps-related queries (deploy, Docker, CI/CD, backup, health check, incident). Provides context about the deploy directory structure and operational procedures.
+
+### Instructions
+`devops.instructions.md` is auto-applied when editing any file matching:
+- `.github/workflows/**`
+- `docker-compose*.yml`
+- `Dockerfile`
+- `packages/server/**`
+- `deploy/**`
+
+## 10. SLO / SLI / Error Budget
+
+### Service Level Indicators (SLIs)
+
+| SLI | Measurement |
+|-----|-------------|
+| **Availability** | % requests returning 2xx/3xx over 5-min window |
+| **Latency** | p95 response time for `POST /api/chat` |
+| **Error rate** | % requests returning 5xx |
+| **Durability** | % successful DB writes confirmed readable |
+
+### Service Level Objectives (SLOs)
+
+| Service | SLO | Error Budget (30 days) |
+|---------|-----|----------------------|
+| API availability | 99.5% | 3h 36m downtime |
+| p95 latency < 1s | 95% of requests | 5% allowed to exceed |
+| 5xx error rate < 0.5% | 99.5% clean requests | — |
+
+### Error Budget Policy
+
+- **Budget > 50% remaining** → Normal velocity, experiments allowed
+- **Budget 10–50% remaining** → Slow down risky deploys, focus on reliability
+- **Budget < 10% remaining** → Freeze non-critical deploys, reliability work only
+- **Budget exhausted** → Incident review required before resuming deploys
+
+## 11. Observability
+
+### Structured Logging
+
+All services log JSON to stdout. Docker captures and rotates (50MB × 5).
+
+```json
+{
+  "timestamp": "2026-03-22T10:00:00.000Z",
+  "level": "info",
+  "service": "xclaw-server",
+  "traceId": "abc123",
+  "tenantId": "tenant_01",
+  "message": "Agent execution completed",
+  "durationMs": 245
+}
+```
+
+Log levels: `error` → `warn` → `info` → `debug` (production uses `info`)
+
+### Observability Stack (recommended)
+
+| Layer | Tool | Purpose |
+|-------|------|---------|
+| Metrics | Prometheus + Grafana | System & app metrics |
+| Logs | Loki / ELK Stack | Centralized log aggregation |
+| Tracing | OpenTelemetry + Jaeger | Distributed request tracing |
+| Alerting | Alertmanager / PagerDuty | Alert routing & on-call |
+
+### Key Dashboards
+
+1. **API Overview** — request rate, p50/p95/p99 latency, 5xx rate
+2. **Infrastructure** — CPU, memory, disk per container
+3. **Database** — PG connections, query latency, Mongo op latency
+4. **Business** — Active agents, sessions/hour, skill execution rate
+
+## 12. Alerting & On-Call
+
+### Alert Severity Matrix
+
+| Severity | Definition | Response Time | Notify |
+|----------|-----------|---------------|--------|
+| **SEV1** | Total outage, data loss risk | 15 min | On-call + manager |
+| **SEV2** | Major feature broken, > 10% users impacted | 30 min | On-call |
+| **SEV3** | Degraded performance, workaround exists | 4 hours | Slack #alerts |
+| **SEV4** | Minor issue, no user impact | Next business day | Ticket only |
+
+### Alert Rules
+
+```yaml
+# Example Prometheus rules
+- alert: HighErrorRate
+  expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+  for: 2m
+  severity: SEV2
+
+- alert: HighLatency
+  expr: histogram_quantile(0.95, http_request_duration_seconds) > 2
+  for: 5m
+  severity: SEV3
+
+- alert: DatabaseDown
+  expr: up{job="postgres"} == 0
+  for: 1m
+  severity: SEV1
+```
+
+### On-Call Rotation
+
+- Primary on-call: 1-week rotation
+- Escalation: primary → secondary (15 min) → engineering lead (30 min)
+- Acknowledge SLA: SEV1 within 15 min, SEV2 within 30 min
+- Use `#incidents` Slack channel for coordination
+
+## 13. Deployment Strategies
+
+### Current: Rolling Deploy (default)
+Zero-downtime rolling restart via Docker Compose. Suitable for most releases.
+
+### Blue-Green Deploy (breaking changes)
+
+```bash
+# 1. Deploy to "green" stack alongside "blue"
+docker compose -f docker-compose.prod.yml -p xclaw-green up -d
+
+# 2. Smoke test green
+./deploy/scripts/health-check.sh https://green.xclaw.internal
+
+# 3. Switch Nginx upstream to green
+nginx -s reload
+
+# 4. Keep blue running for 30 min (fast rollback window)
+# 5. Stop blue after confirmation
+docker compose -p xclaw-blue down
+```
+
+### Canary Deploy (high-risk changes)
+
+Route 10% of traffic to new version via Nginx:
+
+```nginx
+upstream xclaw_backend {
+  server xclaw-blue:3000 weight=9;   # 90% existing
+  server xclaw-green:3000 weight=1;  # 10% canary
+}
+```
+
+Monitor for 15 min → if error rate unchanged → full cutover.
+
+### Pre-Deploy Checklist
+
+- [ ] All CI checks green
+- [ ] Staging deploy verified
+- [ ] Migration script reviewed (no destructive changes)
+- [ ] Rollback plan documented
+- [ ] On-call notified for SEV1-risk deploys
+
+## 14. DORA Metrics
+
+Track these four key DevOps performance indicators:
+
+| Metric | Current Target | Measurement |
+|--------|---------------|-------------|
+| **Deployment Frequency** | ≥ 1/week | GHA workflow runs to `main` |
+| **Lead Time for Changes** | < 3 days | PR open → deployed to production |
+| **Change Failure Rate** | < 15% | Deployments requiring rollback / total |
+| **MTTR** (Mean Time to Restore) | < 1 hour | Incident start → service restored |
+
+Elite performers (per DORA 2024 report): deploy multiple times/day, lead time < 1 day, CFR < 5%, MTTR < 1 hour.
+
+## 15. Secret & Certificate Rotation
+
+### Secret Rotation Schedule
+
+| Secret | Rotation | Method |
+|--------|----------|--------|
+| `JWT_SECRET` | Every 90 days | `openssl rand -hex 32`, rolling restart |
+| Database passwords | Every 90 days | Update `.env`, restart services |
+| LLM API keys | Every 90 days | Rotate in provider console, update env |
+| OAuth client secrets | Every 180 days | Rotate in provider console |
+
+### Rotation Procedure
+
+```bash
+# 1. Generate new secret
+NEW_SECRET=$(openssl rand -hex 32)
+
+# 2. Update production env (coordinated with team)
+# Edit deploy/env/.env.production
+
+# 3. Rolling restart (zero-downtime)
+docker compose -f docker-compose.prod.yml up -d --no-deps xclaw
+
+# 4. Verify health
+./deploy/scripts/health-check.sh
+```
+
+### SSL Certificate Renewal
+
+Certificates auto-renewed via Certbot (Let's Encrypt). Manual check:
+
+```bash
+# Check expiry
+openssl x509 -enddate -noout -in /etc/letsencrypt/live/xclaw.io/cert.pem
+
+# Force renewal
+certbot renew --force-renewal
+```
+
+Alert 30 days before expiry.
+
+## 16. Backup Verification
+
+**Rule: An untested backup is not a backup.**
+
+### Monthly Restore Test
+
+```bash
+# PostgreSQL — restore to test container
+docker run --rm -e POSTGRES_PASSWORD=test postgres:18 \
+  pg_restore --verbose -d xclaw_test < latest.dump
+
+# MongoDB — restore to test container
+docker run --rm mongo:7 \
+  mongorestore --uri="mongodb://localhost:27017" --gzip --drop dump/
+```
+
+Verify row/document counts match source. Document results in `deploy/runbooks/disaster-recovery.md`.
+
+### Backup Checklist
+
+- [ ] Both PG and Mongo backups complete daily
+- [ ] Backups transferred to off-site storage (S3/GCS)
+- [ ] Restore test performed monthly
+- [ ] Backup alerts configured (notify if backup job fails)
+- [ ] Retention policy enforced (30 days local, 90 days remote)
+
+## 17. Post-Mortem Process
+
+Required for all SEV1 incidents and optional for SEV2.
+
+### Timeline
+
+| When | Action |
+|------|--------|
+| During incident | Designate incident commander, update #incidents every 15 min |
+| Within 24h | Draft post-mortem document |
+| Within 72h | Team review, finalize action items |
+| Within 2 weeks | All P1 action items resolved |
+
+### Post-Mortem Template
+
+```markdown
+## Incident Summary
+- **Date**: 
+- **Severity**: SEV1/SEV2
+- **Duration**: X hours Y minutes
+- **Impact**: N users affected, N% requests failed
+
+## Timeline
+- HH:MM — Event description
+
+## Root Cause
+[Technical explanation]
+
+## Contributing Factors
+- Factor 1
+- Factor 2
+
+## Action Items
+| Item | Owner | Due Date | Priority |
+|------|-------|----------|----------|
+| Fix X | @dev | YYYY-MM-DD | P1 |
+
+## Lessons Learned
+```
+
+**Blameless culture**: Post-mortems focus on systems and processes, not individuals.

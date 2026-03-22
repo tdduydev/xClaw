@@ -7,6 +7,8 @@
     "architecture",
     "channels",
     "ai-providers",
+    "ai-production",
+    "ai-security",
     "integrations",
     "---Agent & Skills---",
     "skills",

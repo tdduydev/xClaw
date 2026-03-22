@@ -7,13 +7,15 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
   // ─── Collections ────────────────────────────────────────
 
   app.get('/collections', (c) => {
-    return c.json({ collections: ctx.rag.listCollections() });
+    const tenantId = c.get('tenantId');
+    return c.json({ collections: ctx.rag.listCollections(tenantId) });
   });
 
   app.post('/collections', async (c) => {
     const { name, description, color } = await c.req.json();
     if (!name) return c.json({ error: 'name is required' }, 400);
-    const col = ctx.rag.createCollection(name, description, color);
+    const tenantId = c.get('tenantId');
+    const col = ctx.rag.createCollection(name, description, color, tenantId);
     return c.json(col, 201);
   });
 
@@ -32,6 +34,7 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
   // ─── Document List & Stats ──────────────────────────────
 
   app.get('/', (c) => {
+    const tenantId = c.get('tenantId');
     const { collectionId, tag, source, enabled, search } = c.req.query();
     const docs = ctx.rag.listDocuments({
       collectionId: collectionId || undefined,
@@ -39,13 +42,15 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
       source: source || undefined,
       enabled: enabled !== undefined ? enabled === 'true' : undefined,
       search: search || undefined,
+      tenantId,
     });
-    const stats = ctx.rag.getStats();
+    const stats = ctx.rag.getStats(tenantId);
     return c.json({ documents: docs, stats });
   });
 
   app.get('/stats/overview', (c) => {
-    return c.json(ctx.rag.getStats());
+    const tenantId = c.get('tenantId');
+    return c.json(ctx.rag.getStats(tenantId));
   });
 
   app.get('/tags', (c) => {
@@ -111,8 +116,9 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
       chunkOverlap: chunkOverlap ?? 50,
     } : undefined;
 
+    const tenantId = c.get('tenantId');
     const doc = await ctx.rag.ingestText(text, title, source, {
-      tags, collectionId, customMetadata, chunkingOptions,
+      tags, collectionId, customMetadata, chunkingOptions, tenantId,
     });
 
     return c.json({
@@ -139,8 +145,9 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
       chunkOverlap: chunkOverlap ?? 50,
     } : undefined;
 
+    const tenantId = c.get('tenantId');
     const doc = await ctx.rag.ingestUrl(url, title, {
-      tags, collectionId, customMetadata, chunkingOptions,
+      tags, collectionId, customMetadata, chunkingOptions, tenantId,
     });
 
     return c.json({
@@ -158,7 +165,8 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
     const { query, topK, collectionId } = await c.req.json();
     if (!query) return c.json({ error: 'query is required' }, 400);
 
-    const result = await ctx.rag.retrieve(query, topK, collectionId);
+    const tenantId = c.get('tenantId');
+    const result = await ctx.rag.retrieve(query, topK, collectionId, tenantId);
     return c.json({
       query: result.query,
       results: result.chunks.map((r) => ({
@@ -176,9 +184,10 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
 
   app.get('/:id', (c) => {
     const id = c.req.param('id');
-    const doc = ctx.rag.getDocument(id);
+    const tenantId = c.get('tenantId');
+    const doc = ctx.rag.getDocument(id, tenantId);
     if (!doc) return c.json({ error: 'Document not found' }, 404);
-    const meta = ctx.rag.getDocumentMeta(id);
+    const meta = ctx.rag.getDocumentMeta(id, tenantId);
     return c.json({
       id: doc.id,
       title: doc.title,
@@ -302,6 +311,7 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
       const errors: Array<{ url: string; error: string }> = [];
       let totalIngested = 0;
 
+      const crawlTenantId = c.get('tenantId');
       for await (const progress of ctx.rag.crawlSite(url, {
         maxPages: Math.min(maxPages ?? 20, 100), // cap at 100
         maxDepth: Math.min(maxDepth ?? 2, 5),
@@ -312,6 +322,7 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
         tags,
         collectionId,
         chunkingOptions: (chunkSize || chunkOverlap) ? { chunkSize, chunkOverlap } : undefined,
+        tenantId: crawlTenantId,
       })) {
         totalIngested = progress.ingested;
         for (const page of progress.pages) {
@@ -385,7 +396,8 @@ export function createKnowledgeRoutes(ctx: GatewayContext) {
     try {
       const { query, topK, collectionId } = await c.req.json();
       if (!query) return c.json({ error: 'query is required' }, 400);
-      const results = await ctx.rag.searchWithReranking(query, { topK: topK ?? 5, collectionId });
+      const searchTenantId = c.get('tenantId');
+      const results = await ctx.rag.searchWithReranking(query, { topK: topK ?? 5, collectionId, tenantId: searchTenantId });
       return c.json({
         ok: true,
         results: results.map((r) => ({

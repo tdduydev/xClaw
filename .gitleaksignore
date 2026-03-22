@@ -1,0 +1,6 @@
+# Gitleaks Exceptions
+# Format: fingerprint:hash
+# Add false positives with justification comments
+#
+# Example:
+# fingerprint:abc123def456  # Test fixture API key, not a real secret — reviewed 2025-01-01

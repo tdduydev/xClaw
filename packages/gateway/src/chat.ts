@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
-import { streamToSSE } from '@xclaw-ai/core';
-import type { AdditionalTool } from '@xclaw-ai/core';
+import { streamToSSE, GuardrailPipeline, PromptInjectionDetector, OutputSanitizer, TopicScopeGuard, LLMRateLimiter } from '@xclaw-ai/core';
+import type { AdditionalTool, GuardrailContext } from '@xclaw-ai/core';
 import { ChatRequestSchema } from '@xclaw-ai/shared';
 import type { StreamEvent, Workflow, ToolDefinition, ToolParameter } from '@xclaw-ai/shared';
 import type { DomainPack } from '@xclaw-ai/domains';
@@ -18,6 +18,19 @@ import {
   sessionsCollection, messagesCollection,
   type MongoSession, type MongoMessage,
 } from '@xclaw-ai/db';
+
+// ─── AI Security: Guardrails & Rate Limiting ─────────────────
+
+const guardrails = new GuardrailPipeline();
+guardrails.addInputGuardrail(new PromptInjectionDetector());
+guardrails.addInputGuardrail(new TopicScopeGuard());
+guardrails.addOutputGuardrail(new OutputSanitizer());
+
+// 60 LLM requests per tenant per minute (adjustable per tier)
+const rateLimiter = new LLMRateLimiter(60, 60_000);
+
+// Cleanup stale rate-limit windows every 5 min
+setInterval(() => rateLimiter.cleanup(), 5 * 60_000);
 
 // In-memory attachment store (per session) — attachments are ephemeral
 const attachmentStore = new Map<string, Array<{ id: string; name: string; mimeType: string; size: number; dataUrl: string }>>();
@@ -141,7 +154,13 @@ function buildDomainTools(domain: DomainPack): AdditionalTool[] {
 async function getOrCreateSession(sessionId: string, tenantId: string, userId: string, firstMessage?: string, agentConfigId?: string): Promise<MongoSession> {
   const sessions = sessionsCollection();
   const existing = await sessions.findOne({ _id: sessionId });
-  if (existing) return existing;
+  if (existing) {
+    // Cross-tenant isolation: reject if session belongs to a different tenant
+    if (existing.tenantId && existing.tenantId !== tenantId) {
+      throw new Error('Session not found');
+    }
+    return existing;
+  }
 
   const now = new Date();
   const session: MongoSession = {
@@ -329,6 +348,7 @@ async function* wrapStreamWithMeta(
   tenantSettings?: TenantSettingsInfo,
   logMeta?: { tenantId: string; userId: string },
   additionalTools?: AdditionalTool[],
+  guardCtx?: import('@xclaw-ai/core').GuardrailContext,
 ): AsyncGenerator<StreamEvent> {
   const timing: Record<string, number> = {};
 
@@ -361,11 +381,25 @@ async function* wrapStreamWithMeta(
   const llmStart = Date.now();
   const generator = agent.chatStream(sid, fullMessage, ragContext, undefined, additionalTools);
   let toolCallCount = 0;
+  let accumulatedContent = '';
 
   for await (const event of generator) {
     if (event.type === 'tool-call-start') toolCallCount++;
+    if (event.type === 'token' && event.content) accumulatedContent += event.content;
     if (event.type === 'finish') {
       timing.llmMs = Date.now() - llmStart;
+
+      // Post-stream output guardrail check
+      if (guardCtx && accumulatedContent) {
+        const outputCheck = await guardrails.checkOutput(accumulatedContent, guardCtx);
+        if (!outputCheck.passed) {
+          yield { type: 'meta', key: 'security-warning', data: {
+            blocked: true,
+            reason: outputCheck.blockedBy?.blockedReason ?? 'Output blocked by security policy',
+          } };
+        }
+      }
+
       yield { type: 'meta', key: 'timing', data: timing };
 
       // Fire-and-forget LLM log
@@ -491,6 +525,29 @@ export function createChatRoutes(ctx: GatewayContext) {
     const piiResult = scanPII(message);
     const storedMessage = piiResult.hasPII ? piiResult.redacted : message;
 
+    // ─── AI Security: Rate Limiting (OWASP LLM10) ─────────────
+    const rateCheck = rateLimiter.check(tenantId);
+    if (!rateCheck.allowed) {
+      return c.json({ error: 'Rate limit exceeded. Please wait before sending more messages.', retryAfterMs: rateCheck.resetMs }, 429);
+    }
+
+    // ─── AI Security: Input Guardrails (OWASP LLM01, LLM06, LLM07) ──
+    const guardCtx: GuardrailContext = {
+      tenantId,
+      userId,
+      sessionId: sid,
+      agentId: activeAgent.config.id,
+      domainId: domainId || undefined,
+    };
+    const inputCheck = await guardrails.checkInput(message, guardCtx);
+    if (!inputCheck.passed) {
+      return c.json({
+        error: 'Message blocked by security policy.',
+        reason: inputCheck.blockedBy?.blockedReason,
+        guardrail: inputCheck.blockedBy?.guardrailName,
+      }, 400);
+    }
+
     // Track conversation — save user message to MongoDB
     await getOrCreateSession(sid, tenantId, userId, message, agentConfigId);
     await addMessage(sid, 'user', storedMessage, piiResult.hasPII ? { metadata: { piiDetected: true, piiTypes: [...new Set(piiResult.matches.map(m => m.type))] } } : undefined);
@@ -520,7 +577,7 @@ export function createChatRoutes(ctx: GatewayContext) {
     // RAG: retrieve relevant context
     let ragContext = '';
     try {
-      const retrieval = await ctx.rag.retrieve(message);
+      const retrieval = await ctx.rag.retrieve(message, undefined, undefined, tenantId);
       if (retrieval.context) {
         ragContext = retrieval.context;
       }
@@ -548,7 +605,7 @@ export function createChatRoutes(ctx: GatewayContext) {
     }
 
     if (stream) {
-      const generator = wrapStreamWithMeta(activeAgent, ctx, sid, fullMessage, message, ragContext, enableWebSearch, tSettings, { tenantId, userId }, domainTools.length > 0 ? domainTools : undefined);
+      const generator = wrapStreamWithMeta(activeAgent, ctx, sid, fullMessage, message, ragContext, enableWebSearch, tSettings, { tenantId, userId }, domainTools.length > 0 ? domainTools : undefined, guardCtx);
       const sseStream = streamToSSE(generator);
 
       return new Response(sseStream, {
@@ -563,8 +620,15 @@ export function createChatRoutes(ctx: GatewayContext) {
     const llmStart = Date.now();
     const response = await activeAgent.chat(sid, fullMessage, ragContext, imageDataUrls.length > 0 ? imageDataUrls : undefined, domainTools.length > 0 ? domainTools : undefined);
     const llmDuration = Date.now() - llmStart;
+
+    // ─── AI Security: Output Guardrails (OWASP LLM05, LLM07) ──
+    const outputCheck = await guardrails.checkOutput(response, guardCtx);
+    const safeResponse = outputCheck.passed
+      ? (outputCheck.finalContent)
+      : 'I apologize, but I cannot provide that response due to security policies.';
+
     // Track assistant response in MongoDB
-    await addMessage(sid, 'assistant', response);
+    await addMessage(sid, 'assistant', safeResponse);
 
     // Fire-and-forget LLM log for non-streaming
     const nProvider = activeAgent.config.llm.provider;
@@ -588,7 +652,7 @@ export function createChatRoutes(ctx: GatewayContext) {
       createdAt: new Date(),
     }).catch(() => {});
 
-    return c.json({ sessionId: sid, content: response });
+    return c.json({ sessionId: sid, content: safeResponse });
   });
 
   // POST /api/chat/stream — dedicated streaming endpoint
@@ -606,9 +670,33 @@ export function createChatRoutes(ctx: GatewayContext) {
     // Resolve agent from config ID or use default
     const streamUser = c.get('user');
     const streamTenantId = streamUser?.tenantId || 'default';
+    const streamUserId = streamUser?.sub || 'anonymous';
     const streamActiveAgent = ctx.agentManager
       ? await ctx.agentManager.getAgent(streamAgentConfigId, streamTenantId)
       : ctx.agent;
+
+    // ─── AI Security: Rate Limiting (OWASP LLM10) ─────────────
+    const streamRateCheck = rateLimiter.check(streamTenantId);
+    if (!streamRateCheck.allowed) {
+      return c.json({ error: 'Rate limit exceeded. Please wait before sending more messages.', retryAfterMs: streamRateCheck.resetMs }, 429);
+    }
+
+    // ─── AI Security: Input Guardrails (OWASP LLM01, LLM06, LLM07) ──
+    const streamGuardCtx: GuardrailContext = {
+      tenantId: streamTenantId,
+      userId: streamUserId,
+      sessionId: sid,
+      agentId: streamActiveAgent.config.id,
+      domainId: streamDomainId || undefined,
+    };
+    const streamInputCheck = await guardrails.checkInput(message, streamGuardCtx);
+    if (!streamInputCheck.passed) {
+      return c.json({
+        error: 'Message blocked by security policy.',
+        reason: streamInputCheck.blockedBy?.blockedReason,
+        guardrail: streamInputCheck.blockedBy?.guardrailName,
+      }, 400);
+    }
 
     // Resolve domain persona + tools
     let streamMessage = message;
@@ -641,7 +729,7 @@ export function createChatRoutes(ctx: GatewayContext) {
     // RAG: retrieve relevant context
     let ragContext = '';
     try {
-      const retrieval = await ctx.rag.retrieve(message);
+      const retrieval = await ctx.rag.retrieve(message, undefined, undefined, streamTenantId);
       if (retrieval.context) {
         ragContext = retrieval.context;
       }
@@ -649,9 +737,7 @@ export function createChatRoutes(ctx: GatewayContext) {
       // RAG retrieval failure is non-fatal
     }
 
-    const streamUserId = streamUser?.sub || 'anonymous';
-
-    const generator = wrapStreamWithMeta(streamActiveAgent, ctx, sid, streamMessage, message, ragContext, enableWebSearch, streamTSettings, { tenantId: streamTenantId, userId: streamUserId }, streamDomainTools.length > 0 ? streamDomainTools : undefined);
+    const generator = wrapStreamWithMeta(streamActiveAgent, ctx, sid, streamMessage, message, ragContext, enableWebSearch, streamTSettings, { tenantId: streamTenantId, userId: streamUserId }, streamDomainTools.length > 0 ? streamDomainTools : undefined, streamGuardCtx);
     const sseStream = streamToSSE(generator);
 
     return new Response(sseStream, {
@@ -685,10 +771,13 @@ export function createChatRoutes(ctx: GatewayContext) {
     const source = 'web-search';
 
     try {
+      const saveUser = c.get('user');
+      const saveTenantId = saveUser?.tenantId || 'default';
       const doc = await ctx.rag.ingestText(textContent, title, source, {
         tags: ['web-search', 'auto-saved'],
         collectionId,
         customMetadata: { query, savedAt: new Date().toISOString(), resultCount: String(results.length) },
+        tenantId: saveTenantId,
       });
 
       return c.json({
@@ -732,6 +821,7 @@ export function createChatRoutes(ctx: GatewayContext) {
             feedbackType: 'negative',
             correctedAt: new Date().toISOString(),
           },
+          tenantId: c.get('user')?.tenantId || 'default',
         });
 
         return c.json({ success: true, learned: true });
@@ -825,9 +915,15 @@ export function createChatRoutes(ctx: GatewayContext) {
   // GET /api/chat/conversations/:id — Get conversation with messages
   app.get('/conversations/:id', async (c) => {
     const id = c.req.param('id');
+    const tenantId = c.get('tenantId');
     const sessions = sessionsCollection();
     const session = await sessions.findOne({ _id: id });
     if (!session) return c.json({ error: 'Conversation not found' }, 404);
+
+    // Cross-tenant isolation: reject if session belongs to a different tenant
+    if (session.tenantId && session.tenantId !== tenantId) {
+      return c.json({ error: 'Conversation not found' }, 404);
+    }
 
     const msgs = await messagesCollection()
       .find({ sessionId: id })
@@ -851,11 +947,12 @@ export function createChatRoutes(ctx: GatewayContext) {
   // PUT /api/chat/conversations/:id — Rename conversation
   app.put('/conversations/:id', async (c) => {
     const id = c.req.param('id');
+    const tenantId = c.get('tenantId');
     const body = await c.req.json();
     const sessions = sessionsCollection();
 
     const result = await sessions.updateOne(
-      { _id: id },
+      { _id: id, tenantId },
       { $set: { title: String(body.title).slice(0, 100), updatedAt: new Date() } },
     );
     if (result.matchedCount === 0) return c.json({ error: 'Conversation not found' }, 404);
@@ -865,7 +962,10 @@ export function createChatRoutes(ctx: GatewayContext) {
   // DELETE /api/chat/conversations/:id — Delete conversation
   app.delete('/conversations/:id', async (c) => {
     const id = c.req.param('id');
-    await sessionsCollection().deleteOne({ _id: id });
+    const tenantId = c.get('tenantId');
+    // Only delete if the session belongs to this tenant
+    const result = await sessionsCollection().deleteOne({ _id: id, tenantId });
+    if (result.deletedCount === 0) return c.json({ error: 'Conversation not found' }, 404);
     await messagesCollection().deleteMany({ sessionId: id });
     return c.json({ success: true });
   });
