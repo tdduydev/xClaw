@@ -281,6 +281,14 @@ export interface ConversationMessage {
   toolResults?: ToolResult[];
   timestamp: string;
   metadata?: Record<string, unknown>;
+  /** RL feedback: user thumbs-up/down or auto tool-success signal */
+  feedback?: {
+    skillId: string;
+    toolName?: string;
+    reward: number;
+    success: boolean;
+    reason?: string;
+  };
 }
 
 // ─── Chat / Messaging Types ────────────────────────────────

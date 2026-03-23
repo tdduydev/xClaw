@@ -31,7 +31,7 @@ The monorepo contains 14 npm workspace packages:
 | `@xclaw-ai/core` | Agent engine: LLM, memory, tools, RAG, tracing, streaming | `@xclaw-ai/shared` |
 | `@xclaw-ai/integrations` | Third-party service integrations | `@xclaw-ai/shared`, `@xclaw-ai/db` |
 | `@xclaw-ai/domains` | Domain-specific logic packs | `@xclaw-ai/shared`, `@xclaw-ai/db` |
-| `@xclaw-ai/ml` | Machine learning inference | `@xclaw-ai/shared`, `@xclaw-ai/core` |
+| `@xclaw-ai/ml` | Machine learning, AutoML, reinforcement learning (bandit) | `@xclaw-ai/shared`, `@xclaw-ai/core` |
 | `@xclaw-ai/skills` | AI agent skill packs (tools) | `@xclaw-ai/shared`, `@xclaw-ai/core` |
 | `@xclaw-ai/skill-hub` | Skill marketplace registry | `@xclaw-ai/shared`, `@xclaw-ai/core` |
 | `@xclaw-ai/gateway` | Express + WebSocket API server | `@xclaw-ai/core`, all providers |
@@ -62,7 +62,7 @@ The `Agent` class is the central orchestrator. It wires up 6 core subsystems + 3
 | Extension | File | Purpose |
 |-----------|------|---------|
 | **RAG Engine** | `rag/rag-engine.ts` | Retrieval-Augmented Generation with vector search |
-| **Skill Manager** | `skills/skill-manager.ts` | Hot-loadable plugin system |
+| **Skill Manager** | `skills/skill-manager.ts` | Hot-loadable plugin system with RL-based skill selection |
 | **Graph Engine** | `graph/graph-engine.ts` | BFS workflow execution |
 
 ## Type System

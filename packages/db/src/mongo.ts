@@ -22,6 +22,14 @@ export interface MongoMessage {
   toolResults?: any;
   metadata?: Record<string, any>;
   embedding?: number[]; // vector embedding for RAG
+  /** RL feedback: user or system reward signal for bandit learning */
+  feedback?: {
+    skillId: string;
+    toolName?: string;
+    reward: number;
+    success: boolean;
+    reason?: string;
+  };
   createdAt: Date;
 }
 

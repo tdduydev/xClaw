@@ -8,6 +8,9 @@ export { algorithms, getAlgorithmsForTask, getAlgorithm } from './algorithms.js'
 export { parseCSV, parseJSON, profileDataset, splitDataset, applyFeaturePipeline } from './dataset.js';
 export { trainModel } from './trainers.js';
 
+// Reinforcement Learning
+export { BanditSelector } from './reinforcement.js';
+
 // Types
 export type {
   // Dataset
@@ -41,6 +44,13 @@ export type {
   // Prediction
   PredictionRequest,
   PredictionResult,
+  // Reinforcement Learning
+  BanditStrategy,
+  ArmStats,
+  BanditConfig,
+  BanditState,
+  RewardSignal,
+  MessageFeedback,
   // Events
   MLEngineEvents,
 } from './types.js';

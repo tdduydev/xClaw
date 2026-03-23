@@ -1,13 +1,13 @@
 ---
 title: ML / AutoML
-description: Machine learning toolkit with 12 algorithms, model training, and AutoML
+description: Machine learning toolkit with 12 algorithms, model training, AutoML, and reinforcement learning
 ---
 
 # ML / AutoML
 
 ![ML / AutoML](/screenshots/18-ml.png)
 
-The ML / AutoML page provides a complete machine learning toolkit with 12 built-in algorithms, model training, automated model selection, and a model registry.
+The ML / AutoML page provides a complete machine learning toolkit with 12 built-in algorithms, model training, automated model selection, a model registry, and **reinforcement learning** for intelligent skill selection.
 
 ---
 
@@ -130,6 +130,102 @@ View and manage all trained models.
 | **Fraud detection** | Isolation Forest, SVM |
 | **Document categorization** | Logistic Regression, SVM |
 | **Feature reduction** | PCA |
+| **Skill/tool selection** | Bandit (UCB1, Thompson Sampling) |
+| **Conversation flow optimization** | Bandit (Epsilon-Greedy) |
+| **Multi-tenant resource allocation** | Bandit (UCB1) |
+
+---
+
+## Reinforcement Learning — Bandit Skill Selection
+
+xClaw includes a **Multi-Armed Bandit** system that uses reinforcement learning to automatically select the best skill/tool for each user query. Instead of static rule-based selection, the agent learns over time which skills produce better results.
+
+### How It Works
+
+Each skill is treated as an "arm" in a multi-armed bandit problem. When a skill is used, the system collects a **reward signal** (from user feedback 👍/👎 or tool execution success/failure). Over time, the bandit algorithm learns to prefer skills with higher rewards while still exploring less-used skills.
+
+### Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| **UCB1** (default) | Upper Confidence Bound — balances exploitation of known-good skills with exploration of uncertain ones | General use, good convergence |
+| **Epsilon-Greedy** | Picks the best-known skill with probability `1-ε`, random otherwise. Epsilon decays over time | Simple scenarios, fast bootstrapping |
+| **Thompson Sampling** | Bayesian approach — samples from Beta distribution per skill to decide | Best theoretical performance, handles uncertainty well |
+
+### Reward Signals
+
+| Source | Signal | Reward Value |
+|--------|--------|--------------|
+| **User feedback** | 👍 thumbs up | `1.0` |
+| **User feedback** | 👎 thumbs down | `0.0` |
+| **Tool execution** | Success | `1.0` |
+| **Tool execution** | Failure/error | `0.0` |
+| **Composite** | Weighted combination of above | `0.0–1.0` |
+
+### Usage Example
+
+```typescript
+import { SkillManager } from '@xclaw-ai/core';
+import { BanditSelector } from '@xclaw-ai/ml';
+
+// Create a bandit with UCB1 strategy
+const bandit = new BanditSelector('tenant-123', { strategy: 'ucb1' });
+
+// Attach to skill manager
+const skills = new SkillManager();
+skills.setSelector(bandit);
+
+// Skills are auto-registered as bandit arms
+skills.register(weatherSkill);
+skills.register(searchSkill);
+
+// Agent selects the best skill via RL
+const bestSkill = skills.selectBestSkill();
+
+// Get tools ordered by RL ranking (best skills first)
+const rankedTools = skills.getRankedTools();
+
+// After tool execution, send reward
+skills.rewardSkill('weather', 1.0, 'tool-success');
+
+// After user feedback
+skills.rewardSkill('search', 0.0, 'user-feedback');
+```
+
+### Bandit State Persistence
+
+The bandit state (arm statistics, epsilon, pull counts) can be exported and saved to MongoDB for cross-session persistence:
+
+```typescript
+// Export state
+const state = bandit.getState();
+await saveBanditState(state); // your persistence logic
+
+// Restore state on startup
+const saved = await loadBanditState('tenant-123');
+bandit.loadState(saved);
+```
+
+### Key Concepts
+
+| Concept | Meaning |
+|---------|----------|
+| **Arm** | A skill or tool that can be selected |
+| **Pull** | One selection + execution of an arm |
+| **Reward** | Feedback signal (0 = bad, 1 = perfect) |
+| **Exploitation** | Picking the arm with the best known reward |
+| **Exploration** | Trying less-used arms to discover better options |
+| **Epsilon (ε)** | Probability of random exploration (decays over time) |
+| **UCB** | Upper Confidence Bound — adds exploration bonus to uncertain arms |
+
+### Tips
+
+- Start with **UCB1** — it provides the best balance without tuning
+- **Thompson Sampling** works best with many skills and high traffic
+- **Epsilon-Greedy** is simplest to understand and debug
+- The system needs ~50–100 interactions per skill to converge
+- Bandit state is per-tenant — each tenant learns independently
+- Use `getRanking()` to inspect which skills are performing best
 
 ---
 

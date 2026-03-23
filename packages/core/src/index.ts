@@ -29,7 +29,7 @@ export type { ToolHandler } from './tools/tool-registry.js';
 
 // Skills
 export { SkillManager, defineSkill } from './skills/skill-manager.js';
-export type { SkillDefinition } from './skills/skill-manager.js';
+export type { SkillDefinition, SkillSelector } from './skills/skill-manager.js';
 
 // Graph / Workflow
 export { GraphEngine } from './graph/graph-engine.js';

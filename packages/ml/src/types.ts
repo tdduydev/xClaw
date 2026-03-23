@@ -255,6 +255,79 @@ export interface PredictionResult {
   latencyMs: number;
 }
 
+// ─── Reinforcement Learning (Bandit) ────────────────────────
+
+export type BanditStrategy = 'epsilon-greedy' | 'ucb1' | 'thompson-sampling';
+
+export interface ArmStats {
+  /** Number of times this arm was pulled */
+  pulls: number;
+  /** Total accumulated reward */
+  totalReward: number;
+  /** Running mean reward = totalReward / pulls */
+  meanReward: number;
+  /** Sum of squared rewards (for variance calculation) */
+  sumSquaredReward: number;
+  /** Thompson Sampling: Beta(alpha, beta) prior */
+  alpha: number;
+  beta: number;
+  /** Last time this arm was selected */
+  lastSelectedAt?: Date;
+}
+
+export interface BanditConfig {
+  /** Selection strategy */
+  strategy: BanditStrategy;
+  /** Epsilon for epsilon-greedy (0–1, default 0.1) */
+  epsilon?: number;
+  /** UCB1 exploration constant (default √2) */
+  explorationConstant?: number;
+  /** Decay factor for epsilon over time (default 0.999) */
+  epsilonDecay?: number;
+  /** Minimum epsilon floor (default 0.01) */
+  epsilonMin?: number;
+}
+
+export interface BanditState {
+  /** Unique ID for this bandit instance (e.g. tenantId or "global") */
+  id: string;
+  /** Configuration */
+  config: BanditConfig;
+  /** Per-arm statistics keyed by arm ID (e.g. skill name) */
+  arms: Record<string, ArmStats>;
+  /** Total pulls across all arms */
+  totalPulls: number;
+  /** Current epsilon (decays over time) */
+  currentEpsilon: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RewardSignal {
+  /** Which arm (skill/tool) was used */
+  armId: string;
+  /** Reward value: 0 = bad, 1 = perfect */
+  reward: number;
+  /** Where the reward came from */
+  source: 'user-feedback' | 'tool-success' | 'latency' | 'composite';
+  /** Optional context that led to this reward */
+  context?: Record<string, unknown>;
+  timestamp: Date;
+}
+
+export interface MessageFeedback {
+  /** Which skill produced the response */
+  skillId: string;
+  /** Which tool was called (if applicable) */
+  toolName?: string;
+  /** Reward value: 0–1 */
+  reward: number;
+  /** Whether the tool execution was successful */
+  success: boolean;
+  /** Optional reason from user */
+  reason?: string;
+}
+
 // ─── ML Engine Interface ────────────────────────────────────
 
 export interface MLEngineEvents {
@@ -263,4 +336,6 @@ export interface MLEngineEvents {
   'pipeline:completed': (pipeline: AutoMLPipeline) => void;
   'pipeline:failed': (pipelineId: string, error: string) => void;
   'model:trained': (model: TrainedModel) => void;
+  'bandit:reward': (armId: string, reward: number, state: BanditState) => void;
+  'bandit:selection': (armId: string, strategy: BanditStrategy, state: BanditState) => void;
 }
