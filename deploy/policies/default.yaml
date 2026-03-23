@@ -1,0 +1,30 @@
+# OpenShell Default Policy for xClaw
+# Applied to sandboxes when no specific policy is specified.
+# Minimal access: read-only filesystem, no network, no privilege escalation.
+
+name: default
+version: "1.0.0"
+
+filesystem:
+  default: read
+  rules:
+    - path: "/tmp"
+      access: read-write
+    - path: "/home/sandbox"
+      access: read-write
+    - path: "/usr"
+      access: read
+    - path: "/lib"
+      access: read
+    - path: "/etc"
+      access: none
+    - path: "/var"
+      access: none
+
+network:
+  default: deny
+  rules: []
+
+process:
+  allow_privilege_escalation: false
+  max_processes: 20

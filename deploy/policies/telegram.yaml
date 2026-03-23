@@ -1,0 +1,23 @@
+# OpenShell Telegram Channel Policy for xClaw
+# Allows access only to Telegram Bot API.
+
+name: telegram
+version: "1.0.0"
+
+filesystem:
+  default: read
+  rules:
+    - path: "/tmp"
+      access: read-write
+    - path: "/home/sandbox"
+      access: read-write
+
+network:
+  default: deny
+  rules:
+    - host: "api.telegram.org"
+      allow: true
+
+process:
+  allow_privilege_escalation: false
+  max_processes: 20

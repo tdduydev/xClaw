@@ -20,6 +20,7 @@ import { IntegrationRegistry, allIntegrations } from '@xclaw-ai/integrations';
 import { allDomainPacks } from '@xclaw-ai/domains';
 import { MLEngine } from '@xclaw-ai/ml';
 import { PluginManager } from '@xclaw-ai/core';
+import { SandboxManager, TenantSandboxManager, PolicyWatcher, OCSFEventLogger } from '@xclaw-ai/sandbox';
 import type { AgentConfig, GatewayConfig } from '@xclaw-ai/shared';
 import { TelegramChannel } from '@xclaw-ai/channel-telegram';
 import { SlackChannel } from '@xclaw-ai/channel-slack';
@@ -29,7 +30,7 @@ import { DiscordChannel } from '@xclaw-ai/channel-discord';
 import { MSTeamsChannel } from '@xclaw-ai/channel-msteams';
 import { textToFhirSkill } from '@xclaw-ai/skills';
 import { loadKnowledgePacks } from './knowledge-loader.js';
-import { runMigrations, seedInitialData, connectMongo, getMongo, mongoMonitoringStore, sessionsCollection, messagesCollection, agentConfigsCollection, channelConnectionsCollection, llmLogsCollection, estimateCost } from '@xclaw-ai/db';
+import { runMigrations, seedInitialData, connectMongo, getMongo, mongoMonitoringStore, sessionsCollection, messagesCollection, agentConfigsCollection, channelConnectionsCollection, llmLogsCollection, estimateCost, sandboxAuditLogsCollection } from '@xclaw-ai/db';
 import type { MongoChannelConnection } from '@xclaw-ai/db';
 
 dotenv.config();
@@ -61,6 +62,8 @@ const {
   DISCORD_BOT_TOKEN = '',
   MSTEAMS_APP_ID = '',
   MSTEAMS_APP_PASSWORD = '',
+  OPENSHELL_ENABLED = '',
+  OPENSHELL_GATEWAY_URL = '',
 } = process.env;
 
 // Auto-detect default model based on provider
@@ -469,6 +472,52 @@ async function main() {
     jwtSecret: JWT_SECRET,
   };
 
+  // ─── OpenShell Sandbox (optional) ─────────────────────────
+  let sandboxManager: SandboxManager | undefined;
+  let tenantSandboxManager: TenantSandboxManager | undefined;
+
+  if (OPENSHELL_ENABLED === 'true') {
+    try {
+      const ocsfLogger = new OCSFEventLogger();
+      ocsfLogger.addDestination(OCSFEventLogger.consoleDestination());
+
+      sandboxManager = new SandboxManager({
+        gatewayUrl: OPENSHELL_GATEWAY_URL || undefined,
+        mode: OPENSHELL_GATEWAY_URL ? 'remote' : 'local',
+        onAudit: (entry) => {
+          sandboxAuditLogsCollection().insertOne({
+            sandboxId: entry.sandboxId,
+            tenantId: entry.tenantId,
+            action: entry.action,
+            details: entry.details,
+            createdAt: new Date(),
+          }).catch(() => {});
+          ocsfLogger.logAudit(entry);
+        },
+      });
+      tenantSandboxManager = new TenantSandboxManager(sandboxManager);
+
+      // Hot-reload policies from YAML files
+      const policyWatcher = new PolicyWatcher({
+        policyDir: new URL('../../../deploy/policies', import.meta.url).pathname,
+        onPolicyUpdate: (name, policy) => {
+          console.log(`   Policy:    hot-reloaded '${name}'`);
+        },
+        onError: (err) => {
+          console.warn('⚠️  Policy watcher error:', err.message);
+        },
+      });
+      policyWatcher.start();
+
+      await sandboxManager.bootstrapGateway();
+      console.log('   Sandbox:   OpenShell gateway ready');
+    } catch (err) {
+      console.warn('⚠️  OpenShell sandbox skipped:', (err as Error).message);
+      sandboxManager = undefined;
+      tenantSandboxManager = undefined;
+    }
+  }
+
   // Create Hono app
   const app = createGateway({
     agent,
@@ -482,6 +531,8 @@ async function main() {
     workflowEngine,
     monitoring,
     pluginManager,
+    sandboxManager,
+    tenantSandboxManager,
   });
 
   // Start server

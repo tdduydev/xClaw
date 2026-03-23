@@ -1,0 +1,21 @@
+{
+    "name": "@xclaw-ai/sandbox",
+    "version": "2.1.0",
+    "description": "xClaw sandbox — OpenShell integration for isolated agent tool execution",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "tsc -b",
+        "dev": "tsc -b --watch"
+    },
+    "dependencies": {
+        "@xclaw-ai/shared": "*"
+    }
+}

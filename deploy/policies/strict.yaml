@@ -1,0 +1,28 @@
+# OpenShell Strict Policy for xClaw
+# Maximum isolation: no filesystem access, no network, minimal processes.
+# Used for untrusted community marketplace skills.
+
+name: strict
+version: "1.0.0"
+
+filesystem:
+  default: none
+  rules:
+    - path: "/tmp"
+      access: read-write
+    - path: "/home/sandbox"
+      access: read-write
+
+network:
+  default: deny
+  rules: []
+
+process:
+  allow_privilege_escalation: false
+  max_processes: 10
+  blocked_syscalls:
+    - ptrace
+    - mount
+    - umount
+    - pivot_root
+    - reboot

@@ -1,0 +1,30 @@
+# OpenShell Gmail Integration Policy for xClaw
+# Allows access only to Google APIs for Gmail/Calendar operations.
+
+name: gmail
+version: "1.0.0"
+
+filesystem:
+  default: read
+  rules:
+    - path: "/tmp"
+      access: read-write
+    - path: "/home/sandbox"
+      access: read-write
+
+network:
+  default: deny
+  rules:
+    - host: "*.googleapis.com"
+      allow: true
+      methods: [GET, POST, PUT, DELETE, PATCH]
+    - host: "oauth2.googleapis.com"
+      allow: true
+      methods: [POST]
+    - host: "accounts.google.com"
+      allow: true
+      methods: [GET, POST]
+
+process:
+  allow_privilege_escalation: false
+  max_processes: 20

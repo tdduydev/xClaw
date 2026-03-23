@@ -1,0 +1,25 @@
+# OpenShell Web Search Policy for xClaw
+# Allows access to Tavily and Brave search APIs.
+
+name: web-search
+version: "1.0.0"
+
+filesystem:
+  default: read
+  rules:
+    - path: "/tmp"
+      access: read-write
+    - path: "/home/sandbox"
+      access: read-write
+
+network:
+  default: deny
+  rules:
+    - host: "api.tavily.com"
+      allow: true
+    - host: "api.search.brave.com"
+      allow: true
+
+process:
+  allow_privilege_escalation: false
+  max_processes: 20

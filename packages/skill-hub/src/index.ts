@@ -24,6 +24,8 @@ export interface SkillTool {
   parameters?: SkillParameter[];
 }
 
+export type SkillTrustLevel = 'builtin' | 'verified' | 'community' | 'untrusted';
+
 export interface SkillRegistryEntry {
   /** Unique skill identifier within a domain (e.g. "healthcare/patient_search") */
   id: string;
@@ -45,6 +47,12 @@ export interface SkillRegistryEntry {
   tags?: string[];
   /** Author / source */
   author?: string;
+  /** Trust level — determines sandbox policy */
+  trustLevel?: SkillTrustLevel;
+  /** Whether this skill requires sandbox execution */
+  sandboxRequired?: boolean;
+  /** Custom sandbox policy name (from builtin policies) */
+  sandboxPolicy?: string;
 }
 
 export interface SkillInstallResult {
@@ -93,6 +101,32 @@ export class SkillRegistry {
     );
   }
 
+  /** List skills that require sandbox execution */
+  listSandboxed(): SkillRegistryEntry[] {
+    return this.list().filter((e) => e.sandboxRequired || e.trustLevel === 'community' || e.trustLevel === 'untrusted');
+  }
+
+  /** Check if a skill should run in a sandbox */
+  requiresSandbox(id: string): boolean {
+    const entry = this.entries.get(id);
+    if (!entry) return true; // Unknown skills default to sandboxed
+    if (entry.sandboxRequired) return true;
+    return entry.trustLevel === 'community' || entry.trustLevel === 'untrusted';
+  }
+
+  /** Get the sandbox policy name for a skill */
+  getSandboxPolicy(id: string): string {
+    const entry = this.entries.get(id);
+    if (entry?.sandboxPolicy) return entry.sandboxPolicy;
+    switch (entry?.trustLevel) {
+      case 'builtin': return 'permissive';
+      case 'verified': return 'default';
+      case 'community': return 'strict';
+      case 'untrusted': return 'strict';
+      default: return 'default';
+    }
+  }
+
   markInstalled(id: string, installed: boolean): void {
     const entry = this.entries.get(id);
     if (entry) entry.installed = installed;
@@ -112,6 +146,9 @@ export class SkillRegistry {
         version: s.version,
         tags: s.tags,
         author: s.author,
+        trustLevel: s.trustLevel ?? 'community',
+        sandboxRequired: s.sandboxRequired ?? (s.trustLevel === 'community' || s.trustLevel === 'untrusted'),
+        sandboxPolicy: s.sandboxPolicy,
       });
     }
   }

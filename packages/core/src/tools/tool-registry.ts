@@ -33,6 +33,10 @@ export class ToolRegistry {
     return [...this.tools.values()].map((t) => t.definition);
   }
 
+  getDefinition(name: string): ToolDefinition | undefined {
+    return this.tools.get(name)?.definition;
+  }
+
   async execute(toolCall: ToolCall): Promise<ToolResult> {
     const tool = this.tools.get(toolCall.name);
     const start = Date.now();

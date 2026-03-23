@@ -4,7 +4,7 @@
 
 // Agent
 export { Agent } from './agent/agent.js';
-export type { AdditionalTool } from './agent/agent.js';
+export type { AdditionalTool, SandboxToolExecutor, AgentSandboxConfig } from './agent/agent.js';
 export { EventBus } from './agent/event-bus.js';
 
 // LLM

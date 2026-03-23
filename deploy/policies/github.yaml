@@ -1,0 +1,29 @@
+# OpenShell GitHub Integration Policy for xClaw
+# Allows access only to GitHub API endpoints.
+
+name: github
+version: "1.0.0"
+
+filesystem:
+  default: read
+  rules:
+    - path: "/tmp"
+      access: read-write
+    - path: "/home/sandbox"
+      access: read-write
+
+network:
+  default: deny
+  rules:
+    - host: "api.github.com"
+      allow: true
+    - host: "github.com"
+      allow: true
+      methods: [GET]
+    - host: "raw.githubusercontent.com"
+      allow: true
+      methods: [GET]
+
+process:
+  allow_privilege_escalation: false
+  max_processes: 20

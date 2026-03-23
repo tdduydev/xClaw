@@ -7,6 +7,7 @@ import type { GatewayConfig } from '@xclaw-ai/shared';
 import type { IntegrationRegistry } from '@xclaw-ai/integrations';
 import type { DomainPack } from '@xclaw-ai/domains';
 import type { MLEngine } from '@xclaw-ai/ml';
+import type { SandboxManager, TenantSandboxManager } from '@xclaw-ai/sandbox';
 import type { AgentManager } from './agent-manager.js';
 import { authMiddleware, createAuthRoutes } from './auth.js';
 import { createChatRoutes } from './chat.js';
@@ -36,6 +37,7 @@ import { createAnalyticsRoutes } from './analytics.js';
 import { createApiKeyRoutes } from './api-keys.js';
 import { createRetentionRoutes } from './retention.js';
 import { createWidgetRoutes } from './widget.js';
+import { createSandboxRoutes } from './sandbox.js';
 
 export interface GatewayContext {
   agent: Agent;
@@ -49,6 +51,8 @@ export interface GatewayContext {
   workflowEngine?: WorkflowEngine;
   monitoring?: MonitoringService;
   pluginManager?: PluginManager;
+  sandboxManager?: SandboxManager;
+  tenantSandboxManager?: TenantSandboxManager;
 }
 
 export function createGateway(ctx: GatewayContext) {
@@ -115,6 +119,9 @@ export function createGateway(ctx: GatewayContext) {
   api.route('/api-keys', createApiKeyRoutes());
   api.route('/retention', createRetentionRoutes());
   api.route('/widget', createWidgetRoutes());
+  if (ctx.sandboxManager && ctx.tenantSandboxManager) {
+    api.route('/sandbox', createSandboxRoutes(ctx.sandboxManager, ctx.tenantSandboxManager));
+  }
   app.route('/api', api);
 
   return app;

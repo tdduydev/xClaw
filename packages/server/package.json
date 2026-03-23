@@ -18,6 +18,7 @@
         "@xclaw-ai/integrations": "*",
         "@xclaw-ai/domains": "*",
         "@xclaw-ai/ml": "*",
+        "@xclaw-ai/sandbox": "*",
         "@xclaw-ai/skills": "*",
         "@xclaw-ai/channel-telegram": "*",
         "@xclaw-ai/channel-slack": "*",

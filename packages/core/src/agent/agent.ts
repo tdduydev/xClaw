@@ -7,6 +7,7 @@ import type {
   ToolResult,
   StreamEvent,
   ToolDefinition,
+  SandboxExecutionResult,
 } from '@xclaw-ai/shared';
 import { EventBus } from './event-bus.js';
 import { LLMRouter } from '../llm/llm-router.js';
@@ -20,6 +21,26 @@ export interface AdditionalTool {
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
+/** Sandbox executor interface — decoupled from @xclaw-ai/sandbox to avoid circular deps */
+export interface SandboxToolExecutor {
+  execute(
+    call: ToolCall,
+    definition: ToolDefinition,
+    handler: (args: Record<string, unknown>) => Promise<unknown>,
+    options: { tenantId: string },
+  ): Promise<ToolResult>;
+}
+
+/** Configuration for the Agent's sandbox integration */
+export interface AgentSandboxConfig {
+  /** Sandbox executor instance */
+  executor: SandboxToolExecutor;
+  /** Tenant ID for sandbox scoping */
+  tenantId: string;
+  /** Whether sandbox is enabled */
+  enabled: boolean;
+}
+
 export class Agent {
   readonly config: AgentConfig;
   readonly events: EventBus;
@@ -27,6 +48,7 @@ export class Agent {
   readonly memory: MemoryManager;
   readonly tools: ToolRegistry;
   readonly tracer: Tracer;
+  private sandboxConfig?: AgentSandboxConfig;
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -35,6 +57,15 @@ export class Agent {
     this.memory = new MemoryManager();
     this.tools = new ToolRegistry();
     this.tracer = new Tracer();
+  }
+
+  /**
+   * Configure sandbox execution for this agent.
+   * When enabled, tools with sandbox requirements will be routed
+   * through the OpenShell sandbox executor.
+   */
+  configureSandbox(sandboxConfig: AgentSandboxConfig): void {
+    this.sandboxConfig = sandboxConfig;
   }
 
   /**
@@ -249,7 +280,25 @@ export class Agent {
       // Check additional (per-request) tools first, fall back to shared registry
       const additionalTool = additionalTools?.find((t) => t.definition.name === call.name);
       let result: ToolResult;
-      if (additionalTool) {
+
+      // Determine if this tool requires sandbox execution
+      const definition = additionalTool?.definition ?? this.tools.getDefinition(call.name);
+      const needsSandbox = this.sandboxConfig?.enabled && definition?.sandbox?.required;
+
+      if (needsSandbox && this.sandboxConfig?.executor) {
+        // Route through sandbox executor (OpenShell)
+        const handler = additionalTool
+          ? additionalTool.handler
+          : (args: Record<string, unknown>) => this.tools.execute({ ...call, arguments: args }).then((r) => r.result);
+
+        result = await this.sandboxConfig.executor.execute(
+          call,
+          definition!,
+          handler,
+          { tenantId: this.sandboxConfig.tenantId },
+        );
+      } else if (additionalTool) {
+        // Direct execution for non-sandboxed additional tools
         const start = Date.now();
         try {
           const res = await additionalTool.handler(call.arguments);
@@ -258,6 +307,7 @@ export class Agent {
           result = { toolCallId: call.id, success: false, result: null, error: err instanceof Error ? err.message : String(err), duration: Date.now() - start };
         }
       } else {
+        // Direct execution for registered tools
         result = await this.tools.execute(call);
       }
       results.push(result);

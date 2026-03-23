@@ -48,6 +48,7 @@ export type DB = ReturnType<typeof getDB>;
 
 // Re-export schema and drizzle helpers
 export * from './schema/index.js';
+export { encryptCredentials, decryptCredentials, isEncrypted } from './credential-encryption.js';
 export { eq, and, or, desc, asc, sql, like, inArray } from 'drizzle-orm';
 export { seedInitialData } from './seed.js';
 
@@ -59,6 +60,7 @@ export {
   activityLogsCollection, llmLogsCollection,
   handoffSessionsCollection, escalationRulesCollection,
   apiKeysCollection, retentionPoliciesCollection,
+  sandboxAuditLogsCollection,
 } from './mongo.js';
 export type {
   MongoSession, MongoMessage, MongoMemoryEntry, MongoAgentConfig,
@@ -66,6 +68,7 @@ export type {
   MongoActivityLog, MongoLLMLog,
   MongoHandoffSession, MongoEscalationRule,
   MongoApiKey, MongoRetentionPolicy,
+  MongoSandboxAuditLog,
 } from './mongo.js';
 
 // Monitoring store

@@ -289,6 +289,21 @@ export function retentionPoliciesCollection(db?: Db): Collection<MongoRetentionP
   return (db || getMongo()).collection<MongoRetentionPolicy>('retention_policies');
 }
 
+// ─── Sandbox Audit Logs ────────────────────────────────────
+
+export interface MongoSandboxAuditLog {
+  _id?: string;
+  sandboxId: string;
+  tenantId: string;
+  action: 'create' | 'connect' | 'execute' | 'policy-update' | 'destroy' | 'blocked';
+  details: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export function sandboxAuditLogsCollection(db?: Db): Collection<MongoSandboxAuditLog> {
+  return (db || getMongo()).collection<MongoSandboxAuditLog>('sandbox_audit_logs');
+}
+
 // ─── Indexes ───────────────────────────────────────────────
 
 async function ensureIndexes(db: Db) {
@@ -368,4 +383,12 @@ async function ensureIndexes(db: Db) {
   // Retention policies
   const retention = retentionPoliciesCollection(db);
   await retention.createIndex({ tenantId: 1, resource: 1 }, { unique: true });
+
+  // Sandbox audit logs
+  const sandboxAudit = sandboxAuditLogsCollection(db);
+  await sandboxAudit.createIndex({ tenantId: 1, createdAt: -1 });
+  await sandboxAudit.createIndex({ sandboxId: 1, createdAt: -1 });
+  await sandboxAudit.createIndex({ action: 1 });
+  // TTL: auto-delete sandbox audit logs after 90 days
+  await sandboxAudit.createIndex({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 3600 });
 }

@@ -1,0 +1,28 @@
+# OpenShell Permissive Policy for xClaw
+# For trusted built-in skills that need broader access.
+# Still denies network by default — add specific rules per integration.
+
+name: permissive
+version: "1.0.0"
+
+filesystem:
+  default: read
+  rules:
+    - path: "/tmp"
+      access: read-write
+    - path: "/home/sandbox"
+      access: read-write
+    - path: "/usr"
+      access: read
+    - path: "/lib"
+      access: read
+    - path: "/data"
+      access: read
+
+network:
+  default: deny
+  rules: []
+
+process:
+  allow_privilege_escalation: false
+  max_processes: 50

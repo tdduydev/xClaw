@@ -67,6 +67,8 @@ export interface ToolDefinition {
   returns?: ToolParameter;
   requiresApproval?: boolean;
   timeout?: number;
+  /** Sandbox execution requirements for this tool (OpenShell integration) */
+  sandbox?: ToolSandboxPolicy;
 }
 
 export interface ToolParameter {
@@ -636,9 +638,9 @@ export interface SystemMetrics {
   timestamp: string;
 }
 
-// ─── Sandbox Config ─────────────────────────────────────────
+// ─── Workflow Sandbox Config ─────────────────────────────────
 
-export interface SandboxConfig {
+export interface WorkflowSandboxConfig {
   timeoutMs: number;
   memoryLimitMb?: number;
 }
@@ -910,4 +912,170 @@ export interface ApiKeyEntry {
   lastUsedAt?: string;
   createdAt: string;
   createdBy: string;
+}
+
+// ─── OpenShell Sandbox Types ────────────────────────────────
+
+/** Trust level for skills — determines sandbox requirements */
+export type SkillTrustLevel = 'builtin' | 'verified' | 'community';
+
+/** Sandbox execution status */
+export type SandboxStatus = 'creating' | 'ready' | 'running' | 'stopping' | 'stopped' | 'error';
+
+/** Filesystem policy rule */
+export interface FilesystemPolicyRule {
+  path: string;
+  access: 'read' | 'write' | 'read-write' | 'none';
+}
+
+/** Network policy rule (L7 HTTP method + path level) */
+export interface NetworkPolicyRule {
+  host: string;
+  ports?: number[];
+  methods?: ('GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS')[];
+  pathPatterns?: string[];
+  allow: boolean;
+}
+
+/** Process policy constraints */
+export interface ProcessPolicy {
+  allowPrivilegeEscalation: boolean;
+  blockedSyscalls?: string[];
+  maxProcesses?: number;
+}
+
+/** Inference routing policy */
+export interface InferencePolicy {
+  provider: string;
+  model: string;
+  stripCredentials: boolean;
+}
+
+/** Complete sandbox policy (maps to OpenShell YAML policy) */
+export interface SandboxPolicy {
+  name: string;
+  version: string;
+  filesystem: {
+    rules: FilesystemPolicyRule[];
+    defaultAccess: 'none' | 'read';
+  };
+  network: {
+    rules: NetworkPolicyRule[];
+    defaultAction: 'allow' | 'deny';
+  };
+  process: ProcessPolicy;
+  inference?: InferencePolicy;
+}
+
+/** Provider for credential injection into sandbox */
+export interface SandboxProvider {
+  id: string;
+  name: string;
+  type: 'api-key' | 'oauth2' | 'bearer' | 'basic';
+  /** Environment variable names to inject (never expose values in this type) */
+  envVars: string[];
+}
+
+/** Configuration for creating a sandbox */
+export interface SandboxConfig {
+  /** Unique sandbox identifier */
+  id: string;
+  /** Sandbox name (human-readable) */
+  name: string;
+  /** Tenant that owns this sandbox */
+  tenantId: string;
+  /** Base image (default: 'base') */
+  image?: string;
+  /** Policy to apply */
+  policy: SandboxPolicy;
+  /** Credential providers to inject */
+  providers?: SandboxProvider[];
+  /** Enable GPU passthrough */
+  gpu?: boolean;
+  /** Resource limits */
+  resources?: SandboxResourceLimits;
+  /** Timeout for sandbox operations in ms */
+  timeoutMs?: number;
+}
+
+/** Resource limits for a sandbox container */
+export interface SandboxResourceLimits {
+  /** CPU limit (e.g., '0.5' = half a core) */
+  cpuLimit?: string;
+  /** Memory limit (e.g., '512Mi', '1Gi') */
+  memoryLimit?: string;
+  /** Max concurrent sandboxes per tenant */
+  maxConcurrent?: number;
+}
+
+/** Sandbox instance info (runtime state) */
+export interface SandboxInstance {
+  id: string;
+  name: string;
+  tenantId: string;
+  status: SandboxStatus;
+  image: string;
+  policy: SandboxPolicy;
+  gpu: boolean;
+  createdAt: string;
+  lastActivityAt: string;
+  resources?: SandboxResourceLimits;
+}
+
+/** Result of executing code/tool inside a sandbox */
+export interface SandboxExecutionResult {
+  success: boolean;
+  output: unknown;
+  stderr?: string;
+  exitCode: number;
+  durationMs: number;
+  /** Policy violations that were blocked */
+  blockedActions?: SandboxBlockedAction[];
+}
+
+/** A blocked action recorded by the policy engine */
+export interface SandboxBlockedAction {
+  type: 'filesystem' | 'network' | 'process' | 'inference';
+  description: string;
+  rule: string;
+  timestamp: string;
+}
+
+/** Sandbox audit log entry */
+export interface SandboxAuditEntry {
+  sandboxId: string;
+  tenantId: string;
+  action: 'create' | 'connect' | 'execute' | 'policy-update' | 'destroy' | 'blocked';
+  details: Record<string, unknown>;
+  timestamp: string;
+}
+
+/** Tenant-level sandbox configuration stored in tenantSettings */
+export interface TenantSandboxConfig {
+  /** Whether sandbox execution is enabled for this tenant */
+  enabled: boolean;
+  /** Default policy name to use */
+  defaultPolicy: string;
+  /** Max concurrent sandboxes */
+  maxConcurrentSandboxes: number;
+  /** Sandbox idle timeout (ms) — destroy after inactivity */
+  idleTimeoutMs: number;
+  /** CPU limit per sandbox */
+  cpuLimit: string;
+  /** Memory limit per sandbox */
+  memoryLimit: string;
+  /** Enable GPU for this tenant */
+  gpuEnabled: boolean;
+}
+
+/** Per-tool sandbox requirement (added to ToolDefinition) */
+export interface ToolSandboxPolicy {
+  /** Whether this tool requires sandbox execution */
+  required: boolean;
+  /** Policy name to use (defaults to tenant default) */
+  policyName?: string;
+  /** Additional network rules needed by this tool */
+  networkAllowlist?: string[];
+  /** Filesystem paths this tool needs */
+  filesystemPaths?: FilesystemPolicyRule[];
 }

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
+import type { TenantSandboxConfig } from '@xclaw-ai/shared';
 import { getDB, tenants, tenantSettings, users, eq, and } from '@xclaw-ai/db';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export interface TenantSettingsInfo {
   maxMessagesPerDay: number;
   tavilyApiKey: string | null;
   branding: Record<string, unknown>;
+  sandboxConfig: TenantSandboxConfig;
 }
 
 // ─── In-memory cache (tenant settings) ──────────────────────
@@ -155,6 +157,15 @@ export const TenantService = {
       maxMessagesPerDay: row.maxMessagesPerDay,
       tavilyApiKey: row.tavilyApiKey,
       branding: row.branding as Record<string, unknown>,
+      sandboxConfig: (row.sandboxConfig ?? {
+        enabled: false,
+        defaultPolicy: 'default',
+        maxConcurrentSandboxes: 5,
+        idleTimeoutMs: 300000,
+        cpuLimit: '0.5',
+        memoryLimit: '512Mi',
+        gpuEnabled: false,
+      }) as TenantSandboxConfig,
     };
 
     settingsCache.set(tenantId, { data: result, cachedAt: Date.now() });

@@ -45,6 +45,16 @@ export const tenantSettings = pgTable('tenant_settings', {
   tavilyApiKey: text('tavily_api_key'), // tenant's own Tavily key
   // Custom branding
   branding: jsonb('branding').notNull().default({}), // { logo, primaryColor, appTitle }
+  // Sandbox Configuration (OpenShell)
+  sandboxConfig: jsonb('sandbox_config').notNull().default({
+    enabled: false,
+    defaultPolicy: 'default',
+    maxConcurrentSandboxes: 5,
+    idleTimeoutMs: 300000,
+    cpuLimit: '0.5',
+    memoryLimit: '512Mi',
+    gpuEnabled: false,
+  }), // TenantSandboxConfig from @xclaw-ai/shared
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [

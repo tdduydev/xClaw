@@ -24,6 +24,7 @@
         "@xclaw-ai/domains": "*",
         "@xclaw-ai/integrations": "*",
         "@xclaw-ai/ml": "*",
+        "@xclaw-ai/sandbox": "*",
         "@xclaw-ai/shared": "*",
         "hono": "^4.7.0",
         "jose": "^6.0.0"

@@ -57,6 +57,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
       - CORS_ORIGINS=http://localhost,http://localhost:3000,http://localhost:3001,http://localhost:5001
+      - OPENSHELL_ENABLED=true
+      - OPENSHELL_GATEWAY_URL=http://openshell:8080
+      - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY:-xclaw-dev-credential-key-do-not-use-in-prod}
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +67,25 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # ─── OpenShell Gateway (AI Agent Sandbox Runtime) ──────
+  openshell:
+    image: ghcr.io/nvidia/openshell/gateway:latest
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - openshell-data:/var/lib/openshell
+      - ./deploy/policies:/etc/openshell/policies:ro
+    environment:
+      - OPENSHELL_LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "openshell", "gateway", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # ─── Web Frontend (Nginx) ─────────────────────────────
   web:
@@ -78,3 +100,4 @@ services:
 volumes:
   pgdata:
   mongodata:
+  openshell-data:

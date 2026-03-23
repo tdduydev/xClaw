@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import type {
   Workflow, WorkflowNode, WorkflowEdge, WorkflowExecution,
-  NodeExecutionResult, WorkflowNodeType, ToolCall, SandboxConfig,
+  NodeExecutionResult, WorkflowNodeType, ToolCall, WorkflowSandboxConfig,
 } from '@xclaw-ai/shared';
 import type { ToolRegistry } from '../tools/tool-registry.js';
 import type { LLMAdapter } from '../llm/llm-router.js';
@@ -165,7 +165,7 @@ export function validateWorkflow(workflow: Workflow): ValidationError[] {
 
 export class WorkflowEngine {
   private nodeHandlers: Map<WorkflowNodeType, NodeHandler> = new Map();
-  private sandboxConfig?: SandboxConfig;
+  private sandboxConfig?: WorkflowSandboxConfig;
 
   constructor(
     private toolRegistry: ToolRegistry,
@@ -175,7 +175,7 @@ export class WorkflowEngine {
     this.registerBuiltinHandlers();
   }
 
-  setSandboxConfig(config: SandboxConfig): void {
+  setSandboxConfig(config: WorkflowSandboxConfig): void {
     this.sandboxConfig = config;
   }
 
