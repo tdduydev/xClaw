@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="packages/web/public/logo.svg" alt="xClaw" width="80" height="80" />
+  <img src="packages/web/public/logo.png" alt="xClaw" width="80" height="80" />
 </p>
 
 <h1 align="center">xClaw</h1>
@@ -128,7 +128,7 @@ xClaw/
 │       ├── whatsapp/    # WhatsApp Business API
 │       ├── zalo/        # Zalo Official Account
 │       └── msteams/     # Microsoft Teams
-├── xclaw-plugins/       # [submodule] Official plugins (ShirtGen, Healthcare)
+├── xclaw-plugins/       # [submodule] Official plugins (TeeForge, Healthcare)
 ├── xclaw-demo-integration-app/  # [submodule] HIS-Mini demo integration app
 ├── data/
 │   └── knowledge-packs/ # Data-only plugin packages (drug DB, ICD-10, etc.)
@@ -142,7 +142,7 @@ xClaw/
 
 | Submodule | Path | Repository | Description |
 |-----------|------|------------|-------------|
-| **xclaw-plugins** | `xclaw-plugins/` | [xdev-asia-labs/xclaw-plugins](https://github.com/xdev-asia-labs/xclaw-plugins) | Official plugin packages (ShirtGen.AI, Healthcare) |
+| **xclaw-plugins** | `xclaw-plugins/` | [xdev-asia-labs/xclaw-plugins](https://github.com/xdev-asia-labs/xclaw-plugins) | Official plugin packages (TeeForge.AI, Healthcare) |
 | **xclaw-demo-integration-app** | `xclaw-demo-integration-app/` | [xdev-asia-labs/xclaw-demo-integration-app](https://github.com/xdev-asia-labs/xclaw-demo-integration-app) | HIS-Mini demo — Hospital Information System integration app |
 
 ## Features

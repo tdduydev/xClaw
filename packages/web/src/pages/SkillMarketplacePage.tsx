@@ -52,7 +52,7 @@ const SAMPLE_SKILLS: SkillPack[] = [
         icon: '💊', tags: ['medical', 'drug', 'pharmacology'],
     },
     {
-        id: 'shirtgen', name: 'ShirtGen.AI', description: 'Generate custom t-shirt designs with AI. Includes try-on, marketplace, and print specs.',
+        id: 'shirtgen', name: 'TeeForge.AI', description: 'Generate custom t-shirt designs with AI. Includes try-on, marketplace, and print specs.',
         version: '1.0.0', author: 'xClaw Plugins', category: 'ai', rating: 4.5, downloads: 1800, installed: true,
         icon: '👕', tags: ['ai', 'design', 'ecommerce'],
     },

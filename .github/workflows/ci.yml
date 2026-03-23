@@ -106,8 +106,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -151,8 +149,6 @@ jobs:
     needs: docker-build
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Build server image for scan
         run: docker build -t xclaw-server:scan -f Dockerfile .

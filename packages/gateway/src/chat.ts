@@ -385,7 +385,7 @@ async function* wrapStreamWithMeta(
 
   for await (const event of generator) {
     if (event.type === 'tool-call-start') toolCallCount++;
-    if (event.type === 'token' && event.content) accumulatedContent += event.content;
+    if (event.type === 'text-delta' && event.delta) accumulatedContent += event.delta;
     if (event.type === 'finish') {
       timing.llmMs = Date.now() - llmStart;
 

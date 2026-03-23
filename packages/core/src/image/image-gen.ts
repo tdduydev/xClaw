@@ -385,7 +385,7 @@ export class ImageGenService {
   <rect width="${w}" height="${h}" fill="url(#bg${i})"/>
   <rect width="${w}" height="${h}" fill="url(#grid${i})"/>
   <circle cx="${w * 0.5}" cy="${h * 0.35}" r="${Math.min(w, h) * 0.2}" fill="rgba(255,255,255,0.15)" />
-  <text x="${w / 2}" y="${h * 0.35}" text-anchor="middle" fill="white" font-size="${Math.min(w, h) * 0.06}" font-family="Arial, sans-serif" font-weight="bold">🎨 ShirtGen.AI</text>
+  <text x="${w / 2}" y="${h * 0.35}" text-anchor="middle" fill="white" font-size="${Math.min(w, h) * 0.06}" font-family="Arial, sans-serif" font-weight="bold">🎨 TeeForge.AI</text>
   <text x="${w / 2}" y="${h * 0.45}" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="${Math.min(w, h) * 0.03}" font-family="Arial, sans-serif">${tags || 'generated design'}</text>
   <text x="${w / 2}" y="${h * 0.55}" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="${Math.min(w, h) * 0.025}" font-family="Arial, sans-serif">Variation ${i + 1} • Seed: ${seed}</text>
   <text x="${w / 2}" y="${h * 0.9}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="${Math.min(w, h) * 0.02}" font-family="Arial, sans-serif">${w}×${h} • placeholder mode</text>

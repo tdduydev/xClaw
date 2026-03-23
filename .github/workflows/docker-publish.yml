@@ -42,8 +42,6 @@ jobs:
             image_env: WEB_IMAGE
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3

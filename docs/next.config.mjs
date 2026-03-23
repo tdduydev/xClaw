@@ -9,6 +9,8 @@ const config = {
   serverExternalPackages: ['@takumi-rs/image-response'],
   reactStrictMode: true,
   output: isExport ? 'export' : 'standalone',
+  // Static export requires unoptimized images (Next.js Image API unavailable)
+  ...(isExport ? { images: { unoptimized: true } } : {}),
   ...(isExport
     ? {}
     : {

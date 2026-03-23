@@ -944,7 +944,7 @@ export async function getPluginPages(): Promise<{
   return res.json();
 }
 
-// ─── ShirtGen Plugin ────────────────────────────────────────
+// ─── TeeForge Plugin ────────────────────────────────────────
 
 export async function shirtgenGetDesigns(params?: { limit?: number; skip?: number; status?: string }) {
   const q = new URLSearchParams();
