@@ -1,19 +1,19 @@
-import { randomUUID } from 'node:crypto';
 import type {
-  AgentConfig,
-  LLMMessage,
-  LLMResponse,
-  ToolCall,
-  ToolResult,
-  StreamEvent,
-  ToolDefinition,
-  SandboxExecutionResult,
+    AgentConfig,
+    AgentTransferRequest,
+    LLMMessage,
+    LLMResponse,
+    StreamEvent,
+    ToolCall,
+    ToolDefinition,
+    ToolResult
 } from '@xclaw-ai/shared';
-import { EventBus } from './event-bus.js';
+import { randomUUID } from 'node:crypto';
 import { LLMRouter } from '../llm/llm-router.js';
 import { MemoryManager } from '../memory/memory-manager.js';
 import { ToolRegistry } from '../tools/tool-registry.js';
 import { Tracer } from '../tracing/tracer.js';
+import { EventBus } from './event-bus.js';
 
 /** In-request tool: a tool definition + its handler, passed directly to chat/chatStream */
 export interface AdditionalTool {
@@ -41,6 +41,9 @@ export interface AgentSandboxConfig {
   enabled: boolean;
 }
 
+/** Callback invoked when the LLM decides to transfer to another agent (Google ADK-inspired) */
+export type TransferHandler = (transfer: AgentTransferRequest, sessionId: string, originalMessage: string) => Promise<string>;
+
 export class Agent {
   readonly config: AgentConfig;
   readonly events: EventBus;
@@ -49,6 +52,7 @@ export class Agent {
   readonly tools: ToolRegistry;
   readonly tracer: Tracer;
   private sandboxConfig?: AgentSandboxConfig;
+  private transferHandler?: TransferHandler;
 
   constructor(config: AgentConfig) {
     this.config = config;
@@ -66,6 +70,14 @@ export class Agent {
    */
   configureSandbox(sandboxConfig: AgentSandboxConfig): void {
     this.sandboxConfig = sandboxConfig;
+  }
+
+  /**
+   * Set a handler for agent transfer requests (Google ADK-inspired delegation).
+   * When the LLM calls `transfer_to_agent`, this handler is invoked.
+   */
+  onTransfer(handler: TransferHandler): void {
+    this.transferHandler = handler;
   }
 
   /**
@@ -121,6 +133,37 @@ export class Agent {
         });
 
         return response.content;
+      }
+
+      // Check for transfer_to_agent tool call (Google ADK-inspired delegation)
+      const transferCall = response.toolCalls.find((tc) => tc.name === 'transfer_to_agent');
+      if (transferCall && this.transferHandler) {
+        const transfer: AgentTransferRequest = {
+          targetAgentName: transferCall.arguments.agent_name as string,
+          reason: transferCall.arguments.reason as string | undefined,
+          context: transferCall.arguments.context as string | undefined,
+        };
+
+        await this.events.emit({
+          type: 'agent:transfer',
+          payload: { sessionId, targetAgent: transfer.targetAgentName, reason: transfer.reason },
+          source: this.config.id,
+          timestamp: new Date().toISOString(),
+        });
+
+        const transferResponse = await this.transferHandler(transfer, sessionId, userMessage);
+
+        await this.memory.addMessage(sessionId, {
+          id: randomUUID(),
+          sessionId,
+          role: 'assistant',
+          content: transferResponse,
+          timestamp: new Date().toISOString(),
+          metadata: { transferredTo: transfer.targetAgentName },
+        });
+
+        this.tracer.endSpan(span.id, { iterations, transferred: true, target: transfer.targetAgentName });
+        return transferResponse;
       }
 
       // Execute tool calls (additional tools take priority over registry)
@@ -213,6 +256,25 @@ export class Agent {
 
       // Execute tool calls if any
       if (toolCalls.length > 0) {
+        // Check for transfer_to_agent in streaming mode
+        const transferCall = toolCalls.find((tc) => tc.name === 'transfer_to_agent');
+        if (transferCall && this.transferHandler) {
+          const transfer: AgentTransferRequest = {
+            targetAgentName: transferCall.arguments.agent_name as string,
+            reason: transferCall.arguments.reason as string | undefined,
+            context: transferCall.arguments.context as string | undefined,
+          };
+
+          yield { type: 'meta', key: 'agent-transfer', data: { targetAgent: transfer.targetAgentName, reason: transfer.reason } };
+
+          const transferResponse = await this.transferHandler(transfer, sessionId, userMessage);
+
+          yield { type: 'text-delta', delta: transferResponse };
+          yield { type: 'finish', usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: 'transfer' };
+          this.tracer.endSpan(span.id, { iterations, transferred: true, target: transfer.targetAgentName });
+          return;
+        }
+
         const results = await this.executeToolCalls(toolCalls, additionalTools);
 
         for (const result of results) {

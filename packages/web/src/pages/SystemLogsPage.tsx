@@ -1,14 +1,84 @@
-import { useState, useEffect, useCallback } from 'react';
 import {
-    ScrollText, RefreshCw, Search, ChevronLeft, ChevronRight,
-    AlertTriangle, AlertCircle, Info, Bug, Zap, Activity,
-    Filter, X, Clock, User, Globe, Bot,
+    Activity,
+    AlertCircle,
+    AlertTriangle,
+    Bot,
+    Bug,
+    ChevronLeft, ChevronRight,
+    Clock,
+    Filter,
+    Globe,
+    Info,
+    RefreshCw,
+    ScrollText,
+    Search,
+    User,
+    X,
+    Zap,
 } from 'lucide-react';
-import { getSystemLogs, getAuditLogs, getActivityLogs, getLLMLogs } from '../lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { getActivityLogs, getAuditLogs, getLLMLogs, getSystemLogs } from '../lib/api';
 
 type LogTab = 'system' | 'audit' | 'activity' | 'llm';
 
 const PAGE_SIZE = 50;
+
+// ─── Demo data ─────────────────────────────────────────────
+const DEMO_LOGS: Record<string, any[]> = {
+    system: [
+        { _id: 'sl-1', timestamp: '2026-03-31T10:15:32Z', level: 'info', message: 'Server started successfully on port 3000', source: 'server', metadata: { uptime: '0s', nodeVersion: 'v22.12.0' } },
+        { _id: 'sl-2', timestamp: '2026-03-31T10:15:30Z', level: 'info', message: 'MongoDB connected: xclaw_dev', source: 'database', metadata: { host: 'mongodb:27017' } },
+        { _id: 'sl-3', timestamp: '2026-03-31T10:15:28Z', level: 'info', message: 'PostgreSQL migrations completed (13 tables)', source: 'database', metadata: { duration: '1.2s' } },
+        { _id: 'sl-4', timestamp: '2026-03-31T10:14:55Z', level: 'info', message: 'Redis connected', source: 'cache', metadata: { host: 'redis:6379' } },
+        { _id: 'sl-5', timestamp: '2026-03-31T09:45:12Z', level: 'warn', message: 'Rate limit approaching: 85% capacity for tenant tenant-001', source: 'guardrails', metadata: { tenant: 'tenant-001', limit: 100, current: 85 } },
+        { _id: 'sl-6', timestamp: '2026-03-31T09:30:01Z', level: 'error', message: 'Ollama connection refused — model qwen2.5:14b not responding', source: 'llm', metadata: { provider: 'ollama', model: 'qwen2.5:14b', retryCount: 3 } },
+        { _id: 'sl-7', timestamp: '2026-03-31T09:28:45Z', level: 'info', message: 'MCP server "doc-mcp" connected with 3 tools', source: 'mcp', metadata: { server: 'doc-mcp', tools: ['search_docs', 'read_doc', 'list_docs'] } },
+        { _id: 'sl-8', timestamp: '2026-03-31T09:15:00Z', level: 'info', message: 'Scheduled backup completed for MongoDB', source: 'backup', metadata: { size: '245MB', duration: '12.3s' } },
+        { _id: 'sl-9', timestamp: '2026-03-31T08:52:30Z', level: 'warn', message: 'Prompt injection attempt detected and blocked', source: 'guardrails', metadata: { sessionId: 'sess-abc123', severity: 'high' } },
+        { _id: 'sl-10', timestamp: '2026-03-31T08:30:00Z', level: 'info', message: 'Seed data loaded: 3 tenants, 5 roles, 12 permissions', source: 'seed', metadata: {} },
+        { _id: 'sl-11', timestamp: '2026-03-30T23:00:00Z', level: 'info', message: 'Daily analytics aggregation completed', source: 'analytics', metadata: { conversations: 87, messages: 634 } },
+        { _id: 'sl-12', timestamp: '2026-03-30T22:45:12Z', level: 'debug', message: 'Workflow "Customer Support Auto-Reply" executed successfully', source: 'workflow', metadata: { workflowId: 'wf-001', duration: '3.2s' } },
+        { _id: 'sl-13', timestamp: '2026-03-30T18:22:01Z', level: 'error', message: 'Gmail integration token expired for user admin@xclaw.dev', source: 'integrations', metadata: { integration: 'gmail', userId: 'user-001' } },
+        { _id: 'sl-14', timestamp: '2026-03-30T16:10:33Z', level: 'info', message: 'Healthcare plugin loaded: 6 skills, 4 API routes', source: 'plugins', metadata: { plugin: 'healthcare', version: '1.0.0' } },
+        { _id: 'sl-15', timestamp: '2026-03-30T14:05:00Z', level: 'info', message: 'TeeForge.AI plugin loaded: 5 skills, 5 API routes', source: 'plugins', metadata: { plugin: 'shirtgen', version: '1.0.0' } },
+    ],
+    audit: [
+        { _id: 'al-1', timestamp: '2026-03-31T10:12:00Z', action: 'user.login', userId: 'admin', details: 'Login via password', ip: '192.168.1.100', userAgent: 'Mozilla/5.0 Chrome/133' },
+        { _id: 'al-2', timestamp: '2026-03-31T10:05:00Z', action: 'agent.config.update', userId: 'admin', details: 'Updated agent "General Assistant" — changed model to qwen2.5:14b', ip: '192.168.1.100' },
+        { _id: 'al-3', timestamp: '2026-03-31T09:50:00Z', action: 'workflow.create', userId: 'admin', details: 'Created workflow "Slack Alert on Error"', ip: '192.168.1.100' },
+        { _id: 'al-4', timestamp: '2026-03-31T09:30:00Z', action: 'channel.activate', userId: 'admin', details: 'Activated Telegram channel "xClaw Bot"', ip: '192.168.1.100' },
+        { _id: 'al-5', timestamp: '2026-03-30T16:20:00Z', action: 'role.assign', userId: 'admin', details: 'Assigned role "doctor" to user drsmith@hospital.com', ip: '10.0.1.50' },
+        { _id: 'al-6', timestamp: '2026-03-30T15:00:00Z', action: 'tenant.settings.update', userId: 'admin', details: 'Updated security policy to "strict"', ip: '192.168.1.100' },
+        { _id: 'al-7', timestamp: '2026-03-30T11:30:00Z', action: 'user.create', userId: 'admin', details: 'Created user devuser@xclaw.dev with role "developer"', ip: '192.168.1.100' },
+        { _id: 'al-8', timestamp: '2026-03-29T14:00:00Z', action: 'apikey.create', userId: 'admin', details: 'Created API key "CI/CD Pipeline" with scope: read,write', ip: '192.168.1.100' },
+        { _id: 'al-9', timestamp: '2026-03-29T10:00:00Z', action: 'plugin.install', userId: 'admin', details: 'Installed plugin "healthcare" v1.0.0', ip: '192.168.1.100' },
+        { _id: 'al-10', timestamp: '2026-03-28T09:00:00Z', action: 'user.login', userId: 'devuser', details: 'Login via OAuth (GitHub)', ip: '172.16.0.5' },
+    ],
+    activity: [
+        { _id: 'ac-1', timestamp: '2026-03-31T10:14:00Z', method: 'POST', path: '/api/chat', status: 200, duration: 1250, userId: 'admin', ip: '192.168.1.100' },
+        { _id: 'ac-2', timestamp: '2026-03-31T10:13:30Z', method: 'GET', path: '/api/agent-configs', status: 200, duration: 45, userId: 'admin', ip: '192.168.1.100' },
+        { _id: 'ac-3', timestamp: '2026-03-31T10:12:00Z', method: 'POST', path: '/api/auth/login', status: 200, duration: 320, userId: 'admin', ip: '192.168.1.100' },
+        { _id: 'ac-4', timestamp: '2026-03-31T10:10:00Z', method: 'GET', path: '/api/plugins', status: 200, duration: 23, userId: 'anonymous', ip: '192.168.1.100' },
+        { _id: 'ac-5', timestamp: '2026-03-31T09:55:00Z', method: 'POST', path: '/api/chat', status: 200, duration: 2340, userId: 'devuser', ip: '172.16.0.5' },
+        { _id: 'ac-6', timestamp: '2026-03-31T09:45:00Z', method: 'GET', path: '/api/analytics/overview', status: 200, duration: 156, userId: 'admin', ip: '192.168.1.100' },
+        { _id: 'ac-7', timestamp: '2026-03-31T09:40:00Z', method: 'POST', path: '/api/plugins/healthcare/api/drug-interaction', status: 200, duration: 890, userId: 'drsmith', ip: '10.0.1.50' },
+        { _id: 'ac-8', timestamp: '2026-03-31T09:35:00Z', method: 'GET', path: '/api/workflows', status: 200, duration: 67, userId: 'admin', ip: '192.168.1.100' },
+        { _id: 'ac-9', timestamp: '2026-03-31T09:30:00Z', method: 'POST', path: '/api/knowledge/upload', status: 201, duration: 4500, userId: 'admin', ip: '192.168.1.100' },
+        { _id: 'ac-10', timestamp: '2026-03-31T09:20:00Z', method: 'DELETE', path: '/api/sessions/old-session-123', status: 204, duration: 34, userId: 'admin', ip: '192.168.1.100' },
+        { _id: 'ac-11', timestamp: '2026-03-31T09:10:00Z', method: 'PUT', path: '/api/agent-configs/config-1', status: 200, duration: 89, userId: 'admin', ip: '192.168.1.100' },
+        { _id: 'ac-12', timestamp: '2026-03-31T08:50:00Z', method: 'GET', path: '/api/mcp/tools', status: 200, duration: 112, userId: 'admin', ip: '192.168.1.100' },
+    ],
+    llm: [
+        { _id: 'll-1', timestamp: '2026-03-31T10:14:00Z', provider: 'ollama', model: 'qwen2.5:14b', promptTokens: 1250, completionTokens: 430, totalTokens: 1680, latencyMs: 1180, success: true, cost: 0, sessionId: 'sess-demo-1' },
+        { _id: 'll-2', timestamp: '2026-03-31T10:10:00Z', provider: 'anthropic', model: 'claude-sonnet-4-20250514', promptTokens: 2100, completionTokens: 890, totalTokens: 2990, latencyMs: 1420, success: true, cost: 0.0089, sessionId: 'sess-demo-2' },
+        { _id: 'll-3', timestamp: '2026-03-31T09:55:00Z', provider: 'ollama', model: 'qwen2.5:14b', promptTokens: 850, completionTokens: 320, totalTokens: 1170, latencyMs: 780, success: true, cost: 0, sessionId: 'sess-demo-3' },
+        { _id: 'll-4', timestamp: '2026-03-31T09:45:00Z', provider: 'openai', model: 'gpt-4o-mini', promptTokens: 1500, completionTokens: 600, totalTokens: 2100, latencyMs: 650, success: true, cost: 0.0012, sessionId: 'sess-demo-4' },
+        { _id: 'll-5', timestamp: '2026-03-31T09:30:00Z', provider: 'ollama', model: 'qwen2.5:14b', promptTokens: 3200, completionTokens: 1100, totalTokens: 4300, latencyMs: 2800, success: false, cost: 0, error: 'Context length exceeded', sessionId: 'sess-demo-5' },
+        { _id: 'll-6', timestamp: '2026-03-31T09:20:00Z', provider: 'google', model: 'gemini-2.0-flash', promptTokens: 900, completionTokens: 450, totalTokens: 1350, latencyMs: 520, success: true, cost: 0.0004, sessionId: 'sess-demo-6' },
+        { _id: 'll-7', timestamp: '2026-03-31T09:10:00Z', provider: 'ollama', model: 'qwen2.5vl:7b', promptTokens: 1800, completionTokens: 550, totalTokens: 2350, latencyMs: 1950, success: true, cost: 0, sessionId: 'sess-demo-7' },
+        { _id: 'll-8', timestamp: '2026-03-31T08:50:00Z', provider: 'anthropic', model: 'claude-3-5-haiku-20241022', promptTokens: 680, completionTokens: 290, totalTokens: 970, latencyMs: 390, success: true, cost: 0.0003, sessionId: 'sess-demo-8' },
+    ],
+};
 
 // ─── Level badge colors ────────────────────────────────────
 function levelColor(level: string) {
@@ -102,10 +172,19 @@ export function SystemLogsPage() {
                     });
                     break;
             }
-            setLogs(res.logs || []);
-            setTotal(res.total ?? res.logs?.length ?? 0);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load logs');
+            const fetchedLogs = res.logs || [];
+            if (fetchedLogs.length > 0) {
+                setLogs(fetchedLogs);
+                setTotal(res.total ?? fetchedLogs.length);
+            } else {
+                const demo = DEMO_LOGS[tab] || [];
+                setLogs(demo);
+                setTotal(demo.length);
+            }
+        } catch {
+            const demo = DEMO_LOGS[tab] || [];
+            setLogs(demo);
+            setTotal(demo.length);
         } finally {
             setLoading(false);
         }

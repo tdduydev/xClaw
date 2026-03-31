@@ -1,0 +1,270 @@
+---
+title: Multi-Agent Orchestration
+description: Deep dive into agent hierarchies, workflow agents, transfer protocol, and A2A inter-agent communication.
+---
+
+xClaw supports multi-agent orchestration — multiple AI agents working together within a single platform. Agents can be organized into hierarchies, composed into workflow patterns (sequential, parallel, loop), and communicate across services via the A2A protocol.
+
+## Overview
+
+The multi-agent system consists of 3 core modules in `@xclaw-ai/core`:
+
+| Module | File | Purpose |
+|--------|------|---------|
+| **AgentHierarchy** | `agent/agent-hierarchy.ts` | Agent tree with parent/child relationships and `transfer_to_agent` delegation |
+| **WorkflowAgents** | `agent/workflow-agents.ts` | SequentialAgent, ParallelAgent, LoopAgent compositional patterns |
+| **A2A Protocol** | `a2a/a2a-protocol.ts` | Agent-to-Agent communication for remote/cross-service agents |
+
+## Agent Hierarchy
+
+The `AgentHierarchy` class manages a tree of agents with parent/child relationships. An orchestrator agent can delegate tasks to specialized sub-agents using the LLM-driven `transfer_to_agent` tool.
+
+### How It Works
+
+1. Register agents into the hierarchy with `registerAgent(agent, parentId?)`
+2. Sub-agent references from `AgentConfig.subAgents` are automatically tracked
+3. The `transfer_to_agent` tool is injected into the parent agent's tool definitions
+4. When the LLM decides to delegate, it calls `transfer_to_agent` with the target agent name
+5. The hierarchy routes the conversation to the target agent and returns its response
+
+### Configuration
+
+Each agent can declare sub-agents in its config:
+
+```typescript
+const orchestrator: AgentConfig = {
+  id: 'orchestrator-1',
+  name: 'Orchestrator',
+  allowTransfer: true,      // Enable transfer_to_agent tool
+  subAgents: [
+    { agentConfigId: 'support-bot', name: 'Support Bot' },
+    { agentConfigId: 'code-assistant', name: 'Code Assistant' },
+  ],
+  // ...other config
+};
+```
+
+### Transfer Tool Definition
+
+When `allowTransfer` is enabled, the agent receives an additional tool:
+
+```json
+{
+  "name": "transfer_to_agent",
+  "description": "Transfer this conversation to another specialized agent",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "agentName": {
+        "type": "string",
+        "description": "The name of the agent to transfer to"
+      },
+      "reason": {
+        "type": "string",
+        "description": "Why the transfer is needed"
+      }
+    },
+    "required": ["agentName"]
+  }
+}
+```
+
+The LLM autonomously decides when delegation is appropriate based on the sub-agent descriptions and the user's request.
+
+### API
+
+| Method | Description |
+|--------|-------------|
+| `registerAgent(agent, parentId?)` | Add an agent to the tree |
+| `findAgentByName(name)` | Lookup by name across entire hierarchy |
+| `findAgentById(id)` | Lookup by ID |
+| `getSubAgents(parentId)` | Get child agents |
+| `getParent(childId)` | Get parent agent |
+| `getSiblings(agentId)` | Get sibling agents |
+| `getTransferToolDefinition(parentId)` | Generate `transfer_to_agent` tool for a parent |
+| `executeTransfer(request)` | Route conversation to target agent |
+
+---
+
+## Workflow Agents
+
+Workflow agents compose multiple agents into execution patterns. Unlike visual workflows (drag-and-drop BFS graph), workflow agents are code-defined agent compositions.
+
+### Sequential Agent
+
+Executes sub-agents one after another. Each agent receives the previous agent's output via shared state.
+
+```typescript
+import { createWorkflowAgent } from '@xclaw-ai/core';
+
+const pipeline = createWorkflowAgent({
+  id: 'research-pipeline',
+  name: 'Research Pipeline',
+  type: 'sequential',
+  subAgents: [
+    { agentConfigId: 'researcher', name: 'Researcher' },
+    { agentConfigId: 'writer', name: 'Writer' },
+    { agentConfigId: 'reviewer', name: 'Reviewer' },
+  ],
+});
+```
+
+**Data flow:** `input → Agent 1 → state.output → Agent 2 → state.output → Agent 3 → final result`
+
+### Parallel Agent
+
+Runs all sub-agents concurrently and collects results.
+
+```typescript
+const parallel = createWorkflowAgent({
+  id: 'multi-analysis',
+  name: 'Multi Analysis',
+  type: 'parallel',
+  subAgents: [
+    { agentConfigId: 'sentiment-analyzer', name: 'Sentiment' },
+    { agentConfigId: 'topic-extractor', name: 'Topics' },
+    { agentConfigId: 'summary-writer', name: 'Summary' },
+  ],
+});
+```
+
+**Data flow:** `input → [Agent 1, Agent 2, Agent 3] (concurrent) → combined results`
+
+### Loop Agent
+
+Iterates sub-agents until a condition is met (`maxIterations` or `escalationKey` set in state).
+
+```typescript
+const loop = createWorkflowAgent({
+  id: 'refinement-loop',
+  name: 'Iterative Refinement',
+  type: 'loop',
+  maxIterations: 5,
+  escalationKey: 'quality_approved',
+  subAgents: [
+    { agentConfigId: 'drafter', name: 'Drafter' },
+    { agentConfigId: 'critic', name: 'Critic' },
+  ],
+});
+```
+
+**Data flow:** `input → [Agent 1 → Agent 2] × N iterations → final result (when escalationKey=true or maxIterations reached)`
+
+### Shared State
+
+All workflow agents use a `WorkflowState` dictionary for inter-agent communication:
+
+```typescript
+interface WorkflowState {
+  [key: string]: unknown;
+  input?: string;           // Initial input
+  output?: string;          // Latest agent output
+  escalationKey?: boolean;  // Loop exit signal
+}
+```
+
+### Factory Function
+
+The `createWorkflowAgent()` factory creates the correct agent type:
+
+```typescript
+function createWorkflowAgent(config: WorkflowAgentConfig):
+  SequentialWorkflowAgent | ParallelWorkflowAgent | LoopWorkflowAgent;
+```
+
+---
+
+## A2A Protocol
+
+The Agent-to-Agent (A2A) protocol enables inter-service communication between xClaw agents — whether local or remote.
+
+### Components
+
+| Component | Description |
+|-----------|-------------|
+| **A2AServer** | Wraps an Agent as an A2A-compatible service endpoint |
+| **RemoteA2AAgent** | Client proxy for calling remote A2A agents |
+| **A2ARegistry** | Manages local servers and remote agent references |
+
+### Agent Card
+
+Each A2A agent publishes a discovery card:
+
+```typescript
+interface A2AAgentCard {
+  name: string;
+  description: string;
+  url: string;
+  version: string;
+  capabilities: A2ACapability[];  // 'text' | 'tools' | 'streaming' | 'multimodal'
+}
+```
+
+### Task Flow
+
+```
+Client → A2AServer.handleTask(task) → Agent.chat(sessionId, message) → A2ATaskResult
+```
+
+```typescript
+interface A2ATask {
+  id: string;
+  message: string;
+  sessionId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface A2ATaskResult {
+  taskId: string;
+  status: 'completed' | 'failed' | 'pending';
+  response?: string;
+  artifacts?: A2AArtifact[];
+  error?: string;
+}
+```
+
+### Usage Example
+
+```typescript
+import { A2AServer, A2ARegistry, RemoteA2AAgent } from '@xclaw-ai/core';
+
+// Expose a local agent as A2A service
+const registry = new A2ARegistry();
+const server = registry.registerLocal(agent, { url: '/a2a/support-bot' });
+
+// Call a remote A2A agent
+const remote = registry.registerRemote({
+  name: 'External Analyst',
+  url: 'https://partner.example.com/a2a/analyst',
+  capabilities: ['text', 'tools'],
+});
+
+const result = await remote.sendTask({
+  id: 'task-1',
+  message: 'Analyze Q4 sales data',
+});
+```
+
+---
+
+## Workflow Agents vs Visual Workflows
+
+| Feature | Workflow Agents | Visual Workflows |
+|---------|----------------|------------------|
+| **Definition** | Code (TypeScript) | Drag-and-drop UI |
+| **Execution** | Agent composition patterns | BFS graph traversal |
+| **Nodes** | Agents (each with full LLM + tools) | 16 node types (trigger, LLM call, code, etc.) |
+| **Best for** | Multi-agent AI pipelines | Deterministic business automations |
+| **State** | Shared `WorkflowState` dict | Template variable resolution |
+| **File** | `agent/workflow-agents.ts` | `graph/graph-engine.ts` |
+
+---
+
+## UI Configuration
+
+The Agent Builder includes a **Multi-Agent Settings** section:
+
+- **Allow Transfer**: Toggle to enable `transfer_to_agent` tool injection
+- **Sub-Agents**: Add/remove sub-agent references with name and config ID
+
+These settings are stored in the agent's MongoDB `agent_configs` document and loaded at runtime.

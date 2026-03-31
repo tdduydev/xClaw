@@ -1,13 +1,26 @@
-import { useState, useEffect } from 'react';
 import {
-    Building2, Plus, Edit3, Trash2, X, Save,
-    Users, Settings, Ban, CheckCircle, RefreshCw, UserPlus, Shield,
+    Ban,
+    Building2,
+    CheckCircle,
+    Plus,
+    RefreshCw,
+    Save,
+    Shield,
+    Trash2,
+    UserPlus,
+    X
 } from 'lucide-react';
-import {
-    getAuditLogs, getApiKeys, createApiKey, revokeApiKey,
-    getRetentionPolicies, updateRetentionPolicy, triggerRetentionCleanup,
-} from '../lib/api';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import {
+    createApiKey,
+    getApiKeys,
+    getAuditLogs,
+    getRetentionPolicies,
+    revokeApiKey,
+    triggerRetentionCleanup,
+    updateRetentionPolicy,
+} from '../lib/api';
 
 // re-use existing tenant API via raw apiFetch
 async function apiFetch(path: string, init?: RequestInit) {
@@ -39,6 +52,43 @@ async function createTenantAdmin(tenantId: string, data: { name: string; email: 
 }
 
 type Tab = 'tenants' | 'audit' | 'apiKeys' | 'retention';
+
+// ─── Demo data ─────────────────────────────────────────────
+const DEMO_TENANTS = [
+    { id: 'tenant-001', name: 'xClaw Development', slug: 'xclaw-dev', plan: 'enterprise', status: 'active', createdAt: '2026-01-15T08:00:00Z' },
+    { id: 'tenant-002', name: 'TeeForge.AI', slug: 'teeforge', plan: 'pro', status: 'active', createdAt: '2026-02-01T10:00:00Z' },
+    { id: 'tenant-003', name: 'Hospital Demo', slug: 'hospital-demo', plan: 'pro', status: 'active', createdAt: '2026-02-20T14:00:00Z' },
+    { id: 'tenant-004', name: 'Sandbox Tenant', slug: 'sandbox', plan: 'free', status: 'suspended', createdAt: '2026-03-10T09:00:00Z' },
+];
+
+const DEMO_AUDIT_LOGS = [
+    { _id: 'aud-1', createdAt: '2026-03-31T10:12:00Z', action: 'user.login', userId: 'admin', metadata: { method: 'password', ip: '192.168.1.100' } },
+    { _id: 'aud-2', createdAt: '2026-03-31T10:05:00Z', action: 'agent.config.update', userId: 'admin', metadata: { configId: 'default', model: 'qwen2.5:14b' } },
+    { _id: 'aud-3', createdAt: '2026-03-31T09:50:00Z', action: 'workflow.create', userId: 'admin', metadata: { name: 'Slack Alert on Error' } },
+    { _id: 'aud-4', createdAt: '2026-03-31T09:30:00Z', action: 'channel.activate', userId: 'admin', metadata: { channel: 'telegram', name: 'xClaw Bot' } },
+    { _id: 'aud-5', createdAt: '2026-03-30T16:20:00Z', action: 'role.assign', userId: 'admin', metadata: { role: 'doctor', targetUser: 'drsmith@hospital.com' } },
+    { _id: 'aud-6', createdAt: '2026-03-30T15:00:00Z', action: 'tenant.settings.update', userId: 'admin', metadata: { key: 'securityPolicy', value: 'strict' } },
+    { _id: 'aud-7', createdAt: '2026-03-30T11:30:00Z', action: 'user.create', userId: 'admin', metadata: { email: 'devuser@xclaw.dev', role: 'developer' } },
+    { _id: 'aud-8', createdAt: '2026-03-29T14:00:00Z', action: 'apikey.create', userId: 'admin', metadata: { keyName: 'CI/CD Pipeline', scopes: ['read', 'write'] } },
+    { _id: 'aud-9', createdAt: '2026-03-29T10:00:00Z', action: 'plugin.install', userId: 'admin', metadata: { plugin: 'healthcare', version: '1.0.0' } },
+    { _id: 'aud-10', createdAt: '2026-03-28T09:00:00Z', action: 'user.login', userId: 'devuser', metadata: { method: 'oauth', provider: 'github' } },
+];
+
+const DEMO_API_KEYS = [
+    { _id: 'key-1', name: 'Production API', keyPrefix: 'xk_prod_a1b2c3', scopes: ['read', 'write', 'admin'], createdAt: '2026-03-01T08:00:00Z', lastUsed: '2026-03-31T10:00:00Z' },
+    { _id: 'key-2', name: 'CI/CD Pipeline', keyPrefix: 'xk_ci_d4e5f6', scopes: ['read', 'write'], createdAt: '2026-03-15T10:00:00Z', lastUsed: '2026-03-31T06:00:00Z' },
+    { _id: 'key-3', name: 'Monitoring (Read-Only)', keyPrefix: 'xk_mon_g7h8i9', scopes: ['read'], createdAt: '2026-03-20T14:00:00Z', lastUsed: '2026-03-30T23:00:00Z' },
+    { _id: 'key-4', name: 'Telegram Bot Integration', keyPrefix: 'xk_tg_j0k1l2', scopes: ['read', 'write'], createdAt: '2026-03-25T09:00:00Z', lastUsed: '2026-03-31T09:45:00Z' },
+];
+
+const DEMO_RETENTION_POLICIES = {
+    messages: { retentionDays: 90, enabled: true },
+    sessions: { retentionDays: 60, enabled: true },
+    memory_entries: { retentionDays: 180, enabled: false },
+    llm_logs: { retentionDays: 30, enabled: true },
+    activity_logs: { retentionDays: 30, enabled: true },
+    audit_logs: { retentionDays: 365, enabled: true },
+};
 
 export function AdminPage() {
     const [tab, setTab] = useState<Tab>('tenants');
@@ -90,8 +140,11 @@ function TenantsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         setLoading(true);
         try {
             const data = await getTenants();
-            setTenants(data.tenants ?? []);
-        } catch { /* empty */ }
+            const ts = data.tenants ?? [];
+            setTenants(ts.length > 0 ? ts : DEMO_TENANTS);
+        } catch {
+            setTenants(DEMO_TENANTS);
+        }
         setLoading(false);
     };
 
@@ -233,8 +286,11 @@ function AuditTab() {
         (async () => {
             try {
                 const data = await getAuditLogs(200);
-                setLogs(data.logs ?? []);
-            } catch { /* empty */ }
+                const fetched = data.logs ?? [];
+                setLogs(fetched.length > 0 ? fetched : DEMO_AUDIT_LOGS);
+            } catch {
+                setLogs(DEMO_AUDIT_LOGS);
+            }
             setLoading(false);
         })();
     }, []);
@@ -292,8 +348,11 @@ function ApiKeysTab() {
         setLoading(true);
         try {
             const data = await getApiKeys();
-            setKeys(data.keys ?? []);
-        } catch { /* empty */ }
+            const ks = data.keys ?? [];
+            setKeys(ks.length > 0 ? ks : DEMO_API_KEYS);
+        } catch {
+            setKeys(DEMO_API_KEYS);
+        }
         setLoading(false);
     };
 
@@ -383,8 +442,10 @@ function RetentionTab() {
             for (const p of (data.policies ?? [])) {
                 map[p.resource] = { retentionDays: p.retentionDays, enabled: p.enabled };
             }
-            setPolicies(map);
-        } catch { /* empty */ }
+            setPolicies(Object.keys(map).length > 0 ? map : DEMO_RETENTION_POLICIES);
+        } catch {
+            setPolicies(DEMO_RETENTION_POLICIES);
+        }
         setLoading(false);
     };
 

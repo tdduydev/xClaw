@@ -10,25 +10,29 @@
 // - Stream-able execution events
 // ============================================================
 
-import vm from 'node:vm';
-import { randomUUID } from 'node:crypto';
 import {
-  Annotation,
-  StateGraph,
-  END,
-  START,
-  MemorySaver,
+    Annotation,
+    END,
+    MemorySaver,
+    START,
+    StateGraph,
 } from '@langchain/langgraph';
 import type {
-  Workflow, WorkflowNode, WorkflowEdge, WorkflowExecution,
-  NodeExecutionResult, WorkflowNodeType, ToolCall, WorkflowSandboxConfig,
+    NodeExecutionResult,
+    ToolCall,
+    Workflow,
+    WorkflowEdge, WorkflowExecution,
+    WorkflowNode,
+    WorkflowNodeType,
+    WorkflowSandboxConfig,
 } from '@xclaw-ai/shared';
-import type { ToolRegistry } from '../tools/tool-registry.js';
-import type { LLMAdapter } from '../llm/llm-router.js';
-import type { LLMRouter } from '../llm/llm-router.js';
+import { randomUUID } from 'node:crypto';
+import vm from 'node:vm';
 import type { EventBus } from '../agent/event-bus.js';
-import { validateWorkflow } from './workflow-engine.js';
+import type { LLMAdapter, LLMRouter } from '../llm/llm-router.js';
+import type { ToolRegistry } from '../tools/tool-registry.js';
 import type { ValidationError } from './workflow-engine.js';
+import { validateWorkflow } from './workflow-engine.js';
 
 // ─── LangGraph State Annotation ────────────────────────────
 
@@ -337,7 +341,7 @@ export class LangGraphWorkflowEngine {
     }
 
     // Connect START to first trigger
-    builder.addEdge(START, this.sanitizeNodeId(triggerNodes[0].id));
+    builder.addEdge(START, this.sanitizeNodeId(triggerNodes[0].id) as any);
 
     // Wire up edges between nodes
     for (const node of workflow.nodes) {
@@ -346,7 +350,7 @@ export class LangGraphWorkflowEngine {
 
       if (edges.length === 0) {
         // Terminal node → END
-        builder.addEdge(nodeId, END);
+        builder.addEdge(nodeId as any, END);
         continue;
       }
 
@@ -366,7 +370,7 @@ export class LangGraphWorkflowEngine {
         }
 
         builder.addConditionalEdges(
-          nodeId,
+          nodeId as any,
           (state: WorkflowStateType) => {
             if (state.status === 'failed') return END;
 
@@ -413,11 +417,11 @@ export class LangGraphWorkflowEngine {
 
             return END;
           },
-          [...targetNodeIds, END],
+          [...targetNodeIds, END] as any,
         );
       } else {
         // Single unconditional edge
-        builder.addEdge(nodeId, this.sanitizeNodeId(edges[0].target));
+        builder.addEdge(nodeId as any, this.sanitizeNodeId(edges[0].target) as any);
       }
     }
 

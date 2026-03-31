@@ -1,46 +1,47 @@
+import type { Agent, ApprovalManager, EvalFramework, MonitoringService, MultiAgentOrchestrator, OllamaAdapter, PluginManager, RagEngine } from '@xclaw-ai/core';
+import { eq, getDB } from '@xclaw-ai/db';
+import type { DomainPack } from '@xclaw-ai/domains';
+import type { IntegrationRegistry } from '@xclaw-ai/integrations';
+import type { MLEngine } from '@xclaw-ai/ml';
+import type { SandboxManager, TenantSandboxManager } from '@xclaw-ai/sandbox';
+import type { GatewayConfig, IWorkflowEngine } from '@xclaw-ai/shared';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { getDB, eq } from '@xclaw-ai/db';
-import type { Agent, RagEngine, MonitoringService, PluginManager } from '@xclaw-ai/core';
-import type { IWorkflowEngine } from '@xclaw-ai/shared';
-import type { OllamaAdapter } from '@xclaw-ai/core';
-import type { GatewayConfig } from '@xclaw-ai/shared';
-import type { IntegrationRegistry } from '@xclaw-ai/integrations';
-import type { DomainPack } from '@xclaw-ai/domains';
-import type { MLEngine } from '@xclaw-ai/ml';
-import type { SandboxManager, TenantSandboxManager } from '@xclaw-ai/sandbox';
-import type { AgentManager } from './agent-manager.js';
-import { authMiddleware, createAuthRoutes } from './auth.js';
-import { createChatRoutes } from './chat.js';
-import { createHealthRoutes } from './health.js';
-import { createKnowledgeRoutes } from './knowledge.js';
-import { createModelsRoutes } from './models.js';
-import { createMedicalRoutes } from './medical.js';
-import { createSearchRoutes } from './search.js';
-import { createIntegrationRoutes } from './integrations.js';
-import { createDomainRoutes } from './domains.js';
-import { createMLRoutes } from './ml.js';
-import { createSettingsRoutes } from './settings.js';
-import { createMCPRoutes } from './mcp.js';
-import { tenantMiddleware, createTenantRoutes } from './tenant.js';
-import { createRBACRoutes } from './rbac.js';
-import { createOAuth2Routes } from './oauth2.js';
-import { createZaloMiniAppAuthRoutes } from './auth-zalo-miniapp.js';
-import { createWorkflowRoutes, createWorkflowWebhookRoutes } from './workflows.js';
-import { createMonitoringRoutes } from './monitoring.js';
-import { createPluginRoutes } from './plugins.js';
-import { createAgentsRoutes } from './agents.js';
-import { createMarketplaceRoutes } from './marketplace.js';
 import { activityLoggerMiddleware } from './activity-logger.js';
-import { createVoiceRoutes } from './voice.js';
-import { createHandoffRoutes } from './handoff.js';
+import type { AgentManager } from './agent-manager.js';
+import { createAgentsRoutes } from './agents.js';
 import { createAnalyticsRoutes } from './analytics.js';
 import { createApiKeyRoutes } from './api-keys.js';
-import { createRetentionRoutes } from './retention.js';
-import { createWidgetRoutes } from './widget.js';
-import { createSandboxRoutes } from './sandbox.js';
+import { createApprovalRoutes } from './approvals.js';
+import { createZaloMiniAppAuthRoutes } from './auth-zalo-miniapp.js';
+import { authMiddleware, createAuthRoutes } from './auth.js';
+import { createChatRoutes } from './chat.js';
 import { createDevDocsRoutes } from './dev-docs.js';
+import { createDomainRoutes } from './domains.js';
+import { createEvalRoutes } from './eval.js';
+import { createHandoffRoutes } from './handoff.js';
+import { createHealthRoutes } from './health.js';
+import { createIntegrationRoutes } from './integrations.js';
+import { createKnowledgeRoutes } from './knowledge.js';
+import { createMarketplaceRoutes } from './marketplace.js';
+import { createMCPRoutes } from './mcp.js';
+import { createMedicalRoutes } from './medical.js';
+import { createMLRoutes } from './ml.js';
+import { createModelsRoutes } from './models.js';
+import { createMonitoringRoutes } from './monitoring.js';
+import { createMultiAgentRoutes } from './multi-agent.js';
+import { createOAuth2Routes } from './oauth2.js';
+import { createPluginRoutes } from './plugins.js';
+import { createRBACRoutes } from './rbac.js';
+import { createRetentionRoutes } from './retention.js';
+import { createSandboxRoutes } from './sandbox.js';
+import { createSearchRoutes } from './search.js';
+import { createSettingsRoutes } from './settings.js';
+import { createTenantRoutes, tenantMiddleware } from './tenant.js';
+import { createVoiceRoutes } from './voice.js';
+import { createWidgetRoutes } from './widget.js';
+import { createWorkflowRoutes, createWorkflowWebhookRoutes } from './workflows.js';
 
 export interface GatewayContext {
   agent: Agent;
@@ -57,6 +58,9 @@ export interface GatewayContext {
   sandboxManager?: SandboxManager;
   tenantSandboxManager?: TenantSandboxManager;
   channelManager?: { startChannel(conn: any): Promise<void>; stopChannel(id: string): Promise<void>; isRunning(id: string): boolean };
+  multiAgentOrchestrator?: MultiAgentOrchestrator;
+  evalFramework?: EvalFramework;
+  approvalManager?: ApprovalManager;
 }
 
 export function createGateway(ctx: GatewayContext) {
@@ -137,6 +141,15 @@ export function createGateway(ctx: GatewayContext) {
     api.route('/sandbox', createSandboxRoutes(ctx.sandboxManager, ctx.tenantSandboxManager));
   }
   api.route('/dev-docs', createDevDocsRoutes());
+  if (ctx.multiAgentOrchestrator) {
+    api.route('/multi-agent', createMultiAgentRoutes(ctx.multiAgentOrchestrator));
+  }
+  if (ctx.evalFramework) {
+    api.route('/eval', createEvalRoutes(ctx.evalFramework, ctx.agentManager, ctx.agent));
+  }
+  if (ctx.approvalManager) {
+    api.route('/approvals', createApprovalRoutes(ctx.approvalManager));
+  }
   app.route('/api', api);
 
   return app;

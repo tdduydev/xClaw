@@ -1,24 +1,26 @@
 ---
 title: AI Providers
-description: xClaw supports 10 LLM providers — configure via environment variables or per-agent settings.
+description: xClaw supports 12 LLM providers — configure via environment variables or per-agent settings.
 ---
 
-xClaw includes **10 LLM providers** via a pluggable adapter system. All adapters implement the `LLMAdapter` interface for consistent chat and streaming.
+xClaw includes **12 LLM providers** via a pluggable adapter system. All adapters implement the `LLMAdapter` interface for consistent chat and streaming.
 
 ## Supported Providers
 
 | Provider | Base URL | Default Model | Tool Calling |
 |----------|----------|---------------|-------------|
-| **OpenAI** | `api.openai.com` | `gpt-4o` | ✅ |
-| **Anthropic** | `api.anthropic.com` | `claude-3.5-sonnet` | ✅ |
-| **Google** | `generativelanguage.googleapis.com` | `gemini-pro` | ✅ |
-| **Groq** | `api.groq.com` | `llama-3.1-70b` | ✅ |
-| **Mistral** | `api.mistral.ai` | `mistral-large` | ✅ |
+| **OpenAI** | `api.openai.com` | `gpt-4o-mini` | ✅ |
+| **Anthropic** | `api.anthropic.com` | `claude-sonnet-4-20250514` | ✅ |
+| **Google** | `generativelanguage.googleapis.com` | `gemini-2.0-flash` | ✅ |
+| **Groq** | `api.groq.com` | `llama-3.3-70b-versatile` | ✅ |
+| **Mistral** | `api.mistral.ai` | `mistral-large-latest` | ✅ |
 | **DeepSeek** | `api.deepseek.com` | `deepseek-chat` | ✅ |
 | **xAI (Grok)** | `api.x.ai/v1` | `grok-2` | ✅ |
 | **OpenRouter** | `openrouter.ai/api/v1` | `llama-3.1-70b-instruct` | ✅ |
 | **Perplexity** | `api.perplexity.ai` | `llama-3.1-sonar-large-128k-online` | ❌ |
 | **Ollama** | `localhost:11434` | Auto-detected | ✅ |
+| **HuggingFace** | `api-inference.huggingface.co` | varies by model | ❌ |
+| **Custom** | user-defined | user-defined | depends |
 
 ## Configuration
 
@@ -46,11 +48,14 @@ MISTRAL_API_KEY=...
 
 ### Per-Agent Configuration
 
-Each **Agent Configuration** can use a different provider/model:
+Each agent can override the tenant defaults with its own provider/model:
 
-1. Go to **Settings** → **Models**
-2. Select a provider and model
-3. Or create an Agent Config with custom LLM settings
+1. Open **Agent Builder** → select or create an agent
+2. Go to the **Settings** tab
+3. Choose a **Provider** from the 12 available options (tenant default is marked ★)
+4. The **Model** field auto-fills with the provider's recommended default
+5. Adjust **Temperature** and **Max Tokens** as needed
+6. Save — this agent will always use its configured provider/model regardless of tenant defaults
 
 ## OpenAI-Compatible Providers
 

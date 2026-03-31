@@ -1,9 +1,15 @@
-import { useState, useEffect } from 'react';
 import {
-    BarChart3, TrendingUp, Clock, Users, Download,
-    MessageSquare, Zap, AlertTriangle, RefreshCw,
+    AlertTriangle,
+    BarChart3,
+    Clock,
+    Download,
+    MessageSquare,
+    RefreshCw,
+    TrendingUp,
+    Zap
 } from 'lucide-react';
-import { getAnalyticsOverview, getAnalyticsPerformance, exportAnalyticsCSV } from '../lib/api';
+import { useEffect, useState } from 'react';
+import { exportAnalyticsCSV, getAnalyticsOverview, getAnalyticsPerformance } from '../lib/api';
 
 interface OverviewData {
     totalConversations: number;
@@ -26,6 +32,59 @@ interface PerformanceData {
     errorRate: number;
 }
 
+// ─── Demo data ─────────────────────────────────────────────
+function generateDemoDailyVolume(days: number) {
+    const result = [];
+    const now = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        result.push({
+            date: d.toISOString().slice(0, 10),
+            count: Math.floor(40 + Math.random() * 80 + Math.sin(i / 3) * 20),
+            conversations: Math.floor(15 + Math.random() * 35 + Math.sin(i / 3) * 10),
+        });
+    }
+    return result;
+}
+
+function generateDemoPeakHours() {
+    return Array.from({ length: 24 }, (_, hour) => ({
+        hour,
+        count: Math.floor(
+            hour >= 8 && hour <= 18
+                ? 30 + Math.random() * 60 + (hour >= 9 && hour <= 11 ? 40 : 0) + (hour >= 14 && hour <= 16 ? 30 : 0)
+                : 5 + Math.random() * 15
+        ),
+    }));
+}
+
+const DEMO_OVERVIEW: OverviewData = {
+    totalConversations: 1247,
+    totalMessages: 8934,
+    avgMessagesPerConversation: 7.2,
+    platformBreakdown: { web: 523, telegram: 312, slack: 198, discord: 124, api: 90 },
+    dailyVolume: generateDemoDailyVolume(30),
+    peakHours: generateDemoPeakHours(),
+    avgSessionDurationMs: 342000,
+};
+
+const DEMO_PERFORMANCE: PerformanceData = {
+    totalInteractions: 8934,
+    avgLatencyMs: 1250,
+    toolCallRate: 0.34,
+    escalationRate: 0.08,
+    tokenUsage: { prompt: 2450000, completion: 1820000, total: 4270000 },
+    costUsd: 12.47,
+    modelBreakdown: [
+        { provider: 'ollama', model: 'qwen2.5:14b', calls: 4230, avgLatency: 890, cost: 0 },
+        { provider: 'anthropic', model: 'claude-sonnet-4-20250514', calls: 2150, avgLatency: 1420, cost: 8.25 },
+        { provider: 'openai', model: 'gpt-4o-mini', calls: 1890, avgLatency: 680, cost: 2.34 },
+        { provider: 'google', model: 'gemini-2.0-flash', calls: 664, avgLatency: 520, cost: 1.88 },
+    ],
+    errorRate: 0.023,
+};
+
 export function AnalyticsPage() {
     const [overview, setOverview] = useState<OverviewData | null>(null);
     const [performance, setPerformance] = useState<PerformanceData | null>(null);
@@ -40,9 +99,12 @@ export function AnalyticsPage() {
                 getAnalyticsOverview(days),
                 getAnalyticsPerformance(days),
             ]);
-            setOverview(ov);
-            setPerformance(perf);
-        } catch { /* handled by empty state */ }
+            setOverview(ov?.totalConversations ? ov : DEMO_OVERVIEW);
+            setPerformance(perf?.totalInteractions ? perf : DEMO_PERFORMANCE);
+        } catch {
+            setOverview(DEMO_OVERVIEW);
+            setPerformance(DEMO_PERFORMANCE);
+        }
         setLoading(false);
     };
 

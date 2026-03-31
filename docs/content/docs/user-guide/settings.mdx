@@ -100,20 +100,51 @@ Configure AI model providers and manage available models.
 | Provider | Models |
 |----------|--------|
 | **Ollama** | Any locally hosted model (qwen, llama, codellama, mistral, etc.) |
-| **OpenAI** | GPT-4o, GPT-4, GPT-3.5 Turbo |
-| **Anthropic** | Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku |
+| **OpenAI** | GPT-4o, GPT-4o Mini, GPT-4 Turbo |
+| **Anthropic** | Claude Sonnet 4, Claude 3.5 Sonnet, Claude 3 Haiku |
 | **DeepSeek** | DeepSeek Coder, DeepSeek Chat |
-| **xAI** | Grok |
-| **OpenRouter** | Any model available on OpenRouter |
-| **Perplexity** | pplx-7b, pplx-70b |
-| **Google** | Gemini Pro, Gemini Ultra |
-| **Groq** | LLaMA, Mixtral (ultra-fast inference) |
+| **xAI** | Grok-2 |
+| **OpenRouter** | Any model available on OpenRouter (100+) |
+| **Perplexity** | pplx-7b, pplx-70b, llama-sonar series |
+| **Google** | Gemini 2.0 Flash, Gemini 1.5 Pro |
+| **Groq** | LLaMA 3.3-70b, Mixtral (ultra-fast inference) |
 | **Mistral** | Mistral Large, Mistral Medium |
+| **HuggingFace** | Any hosted inference model via HuggingFace API |
+| **Custom** | Any OpenAI-compatible endpoint with custom base URL |
+
+### Tenant Model Defaults
+
+The tenant-wide default provider and model are stored in the database and exposed via `GET /api/settings`. Agents that do not specify their own provider/model automatically inherit these defaults.
+
+The **Agent Builder** reads `GET /api/settings → modelDefaults` on load and pre-fills the Provider and Model fields accordingly. The tenant's provider is marked **★ Tenant Default** in the provider dropdown.
+
+```json
+// GET /api/settings response (excerpt)
+{
+  "modelDefaults": {
+    "provider": "ollama",
+    "model": "qwen2.5:14b",
+    "temperature": 0.7,
+    "maxTokens": 2048
+  }
+}
+```
+
+To change the tenant defaults:
+1. Go to **Settings → LLM / Models**
+2. Select a **Provider** from the 12 available options
+3. Enter or select the **default model**
+4. Set **Temperature** and **Max Tokens** as appropriate
+5. Save — all agents without per-agent overrides will use the new defaults
+
+### Per-Agent Override
+
+Each agent created in the **Agent Builder** can override the tenant defaults. Choose a different provider or model in the agent's **Settings** tab. A warning is shown if you pick a provider that differs from the tenant default (to remind you a separate API key may be required).
 
 ### Configuration
 For each provider:
-1. Enter the **API Key** (or base URL for Ollama)
-2. Select the **default model**
+1. Enter the **API Key** (or base URL for Ollama / Custom)
+2. Set as the **tenant default** if desired
 3. Test the connection
 4. Save
 

@@ -3,23 +3,32 @@
 // ============================================================
 
 // Agent
+export { AgentHierarchy } from './agent/agent-hierarchy.js';
 export { Agent } from './agent/agent.js';
-export type { AdditionalTool, SandboxToolExecutor, AgentSandboxConfig } from './agent/agent.js';
+export type { AdditionalTool, AgentSandboxConfig, SandboxToolExecutor, TransferHandler } from './agent/agent.js';
+export { ApprovalManager } from './agent/approval-manager.js';
 export { EventBus } from './agent/event-bus.js';
+export { MultiAgentOrchestrator } from './agent/multi-agent.js';
+export { createWorkflowAgent, LoopWorkflowAgent, ParallelWorkflowAgent, SequentialWorkflowAgent } from './agent/workflow-agents.js';
+export type { WorkflowState } from './agent/workflow-agents.js';
+
+// A2A Protocol (Agent-to-Agent)
+export { A2ARegistry, A2AServer, RemoteA2AAgent } from './a2a/a2a-protocol.js';
 
 // LLM
-export { LLMRouter } from './llm/llm-router.js';
-export type { LLMAdapter, ChatOptions, TaskComplexity } from './llm/llm-router.js';
-export { OpenAIAdapter } from './llm/openai-adapter.js';
 export { AnthropicAdapter } from './llm/anthropic-adapter.js';
+export { LLMRouter } from './llm/llm-router.js';
+export type { ChatOptions, LLMAdapter, TaskComplexity } from './llm/llm-router.js';
 export { OllamaAdapter } from './llm/ollama-adapter.js';
-export type { OllamaModel, OllamaModelInfo, OllamaHealthStatus } from './llm/ollama-adapter.js';
-export { DeepSeekAdapter, XAIAdapter, OpenRouterAdapter, PerplexityAdapter, GroqAdapter, MistralAdapter, GeminiAdapter, HuggingFaceAdapter } from './llm/openai-compatible-adapters.js';
+export type { OllamaHealthStatus, OllamaModel, OllamaModelInfo } from './llm/ollama-adapter.js';
+export { OpenAIAdapter } from './llm/openai-adapter.js';
+export { DeepSeekAdapter, GeminiAdapter, GroqAdapter, HuggingFaceAdapter, MistralAdapter, OpenRouterAdapter, PerplexityAdapter, XAIAdapter } from './llm/openai-compatible-adapters.js';
 
 // Streaming
-export { streamToSSE, collectStreamText, withHeartbeat } from './streaming/stream-writer.js';
+export { collectStreamText, streamToSSE, withHeartbeat } from './streaming/stream-writer.js';
 
 // Memory
+export { ConversationSummarizer } from './memory/conversation-summarizer.js';
 export { MemoryManager } from './memory/memory-manager.js';
 export type { MemoryStore } from './memory/memory-manager.js';
 
@@ -28,50 +37,53 @@ export { ToolRegistry } from './tools/tool-registry.js';
 export type { ToolHandler } from './tools/tool-registry.js';
 
 // Skills
-export { SkillManager, defineSkill } from './skills/skill-manager.js';
+export { defineSkill, SkillManager } from './skills/skill-manager.js';
 export type { SkillDefinition, SkillSelector } from './skills/skill-manager.js';
 
 // Graph / Workflow
 export { GraphEngine } from './graph/graph-engine.js';
-export { WorkflowEngine, validateWorkflow } from './workflow/workflow-engine.js';
-export type { ValidationError } from './workflow/workflow-engine.js';
 export { LangGraphWorkflowEngine } from './workflow/langgraph-workflow-engine.js';
+export { validateWorkflow, WorkflowEngine } from './workflow/workflow-engine.js';
+export type { ValidationError } from './workflow/workflow-engine.js';
 
 // Monitoring
 export { MonitoringService } from './monitoring/monitoring-service.js';
-export type { MonitoringStore, MongoAuditLog as MonitoringAuditLog, MongoSystemLog as MonitoringSystemLog, AuditLogFilter, SystemLogFilter } from './monitoring/monitoring-service.js';
+export type { AuditLogFilter, MongoAuditLog as MonitoringAuditLog, MonitoringStore, MongoSystemLog as MonitoringSystemLog, SystemLogFilter } from './monitoring/monitoring-service.js';
 
 // RAG
-export { RagEngine } from './rag/rag-engine.js';
-export type { RagConfig, RetrievalResult, KnowledgeBaseStats, KBCollection, DocumentMeta, QueryHistoryEntry, KBAnalytics } from './rag/rag-engine.js';
 export { DocumentProcessor } from './rag/document-processor.js';
-export type { RagDocument, DocumentChunk, ChunkMetadata, ChunkingOptions, MultiModalContent } from './rag/document-processor.js';
-export { OpenAIEmbeddingProvider, LocalEmbeddingProvider } from './rag/embedding-provider.js';
+export type { ChunkingOptions, ChunkMetadata, DocumentChunk, MultiModalContent, RagDocument } from './rag/document-processor.js';
+export { LocalEmbeddingProvider, OpenAIEmbeddingProvider } from './rag/embedding-provider.js';
 export type { EmbeddingProvider } from './rag/embedding-provider.js';
-export { InMemoryVectorStore } from './rag/vector-store.js';
-export type { VectorStore, VectorSearchResult } from './rag/vector-store.js';
-export { hybridSearch, buildBM25Index, bm25Score, buildCitationContext } from './rag/hybrid-search.js';
-export type { HybridSearchResult, HybridSearchOptions, } from './rag/hybrid-search.js';
-export { WebCrawler } from './rag/web-crawler.js';
-export type { CrawlOptions, CrawledPage, CrawlProgress } from './rag/web-crawler.js';
+export { bm25Score, buildBM25Index, buildCitationContext, hybridSearch } from './rag/hybrid-search.js';
+export type { HybridSearchOptions, HybridSearchResult } from './rag/hybrid-search.js';
+export { RagEngine } from './rag/rag-engine.js';
+export type { DocumentMeta, KBAnalytics, KBCollection, KnowledgeBaseStats, QueryHistoryEntry, RagConfig, RetrievalResult } from './rag/rag-engine.js';
 export { CrossEncoderReranker } from './rag/reranker.js';
-export type { RerankerResult, RerankerOptions } from './rag/reranker.js';
+export type { RerankerOptions, RerankerResult } from './rag/reranker.js';
+export { InMemoryVectorStore } from './rag/vector-store.js';
+export type { VectorSearchResult, VectorStore } from './rag/vector-store.js';
+export { WebCrawler } from './rag/web-crawler.js';
+export type { CrawledPage, CrawlOptions, CrawlProgress } from './rag/web-crawler.js';
 
 // Tracing
 export { Tracer } from './tracing/tracer.js';
 
 // Guardrails (AI Security — OWASP LLM Top 10)
 export { GuardrailPipeline } from './guardrails/guardrail-pipeline.js';
-export { PromptInjectionDetector } from './guardrails/prompt-injection-detector.js';
 export { OutputSanitizer } from './guardrails/output-sanitizer.js';
-export { TopicScopeGuard } from './guardrails/topic-scope-guard.js';
+export { PromptInjectionDetector } from './guardrails/prompt-injection-detector.js';
 export { LLMRateLimiter } from './guardrails/rate-limiter.js';
-export type { GuardrailResult, GuardrailContext, GuardrailPipelineResult, InputGuardrail, OutputGuardrail } from './guardrails/types.js';
+export { TopicScopeGuard } from './guardrails/topic-scope-guard.js';
+export type { GuardrailContext, GuardrailPipelineResult, GuardrailResult, InputGuardrail, OutputGuardrail } from './guardrails/types.js';
 
 // Plugins
 export { PluginManager } from './plugins/plugin-manager.js';
 export type { PluginManagerDeps } from './plugins/plugin-manager.js';
 
 // Image Generation
-export { ImageGenService, IMAGE_MODELS } from './image/image-gen.js';
-export type { ImageGenConfig, ImageGenRequest, ImageGenResult, GeneratedImage } from './image/image-gen.js';
+export { IMAGE_MODELS, ImageGenService } from './image/image-gen.js';
+export type { GeneratedImage, ImageGenConfig, ImageGenRequest, ImageGenResult } from './image/image-gen.js';
+
+// Evaluation
+export { EvalFramework } from './evaluation/eval-framework.js';

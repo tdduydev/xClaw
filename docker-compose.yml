@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: xclaw
       POSTGRES_DB: xclaw
     ports:
-      - "5432:5432"
+      - "5455:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
   mongodb:
     image: mongo:7
     ports:
-      - "27018:27017"
+      - "27019:27017"
     volumes:
       - mongodata:/data/db
     healthcheck:
@@ -33,7 +33,7 @@ services:
   redis:
     image: redis:8-alpine
     ports:
-      - "6379:6379"
+      - "6385:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -46,7 +46,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5001:5001"
+      - "5002:5001"
     env_file:
       - .env
     environment:
@@ -56,9 +56,11 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017/xclaw
       - REDIS_URL=redis://redis:6379
       - OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
-      - CORS_ORIGINS=http://localhost,http://localhost:3000,http://localhost:3001,http://localhost:5001
+      - CORS_ORIGINS=http://localhost,http://localhost:3001,http://localhost:5002
       - OPENSHELL_ENABLED=false
       - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY:-xclaw-dev-credential-key-do-not-use-in-prod}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,7 +75,7 @@ services:
       context: .
       dockerfile: packages/web/Dockerfile
     ports:
-      - "3000:80"
+      - "3001:80"
     depends_on:
       - xclaw
 

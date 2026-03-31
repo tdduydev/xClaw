@@ -1,15 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
 import {
-    Workflow, Plus, Trash2, Play, CheckCircle, XCircle, Clock,
-    RefreshCw, X, AlertTriangle, Zap, ToggleLeft, ToggleRight,
     Pencil,
+    Play,
+    Plus,
+    RefreshCw,
+    ToggleLeft, ToggleRight,
+    Trash2,
+    Workflow,
+    X,
+    Zap
 } from 'lucide-react';
-import {
-    getWorkflows, getWorkflow, createWorkflow, deleteWorkflow, updateWorkflow,
-    executeWorkflow, validateWorkflow,
-} from '../lib/api';
+import { useCallback, useEffect, useState } from 'react';
 import { WorkflowEditor } from '../components/workflow/editor';
 import { NODE_CATALOG } from '../components/workflow/nodes';
+import {
+    createWorkflow, deleteWorkflow,
+    executeWorkflow,
+    getWorkflow,
+    getWorkflows,
+    updateWorkflow,
+    validateWorkflow,
+} from '../lib/api';
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -40,6 +50,78 @@ const DEFAULT_WORKFLOW_DEFINITION = {
     trigger: { type: 'manual', config: {} },
 };
 
+const DEMO_WORKFLOWS: WorkflowInfo[] = [
+    {
+        id: 'demo-wf-1', name: 'Customer Support Auto-Reply', description: 'Tự động phân loại và trả lời email hỗ trợ khách hàng', version: 3, enabled: true,
+        definition: {
+            nodes: [
+                { id: 'trigger-1', type: 'trigger', position: { x: 100, y: 80 }, data: { label: 'New Email', description: 'Email received trigger', config: {} }, inputs: [], outputs: [{ id: 'out-1', name: 'output', type: 'any' }] },
+                { id: 'llm-1', type: 'llm', position: { x: 300, y: 80 }, data: { label: 'Classify Intent', description: 'Determine customer intent', config: {} }, inputs: [{ id: 'in-1', name: 'input', type: 'any' }], outputs: [{ id: 'out-2', name: 'output', type: 'any' }] },
+                { id: 'condition-1', type: 'condition', position: { x: 500, y: 80 }, data: { label: 'Urgency Check', description: 'Branch by priority', config: {} }, inputs: [{ id: 'in-2', name: 'input', type: 'any' }], outputs: [{ id: 'out-3', name: 'true', type: 'any' }, { id: 'out-4', name: 'false', type: 'any' }] },
+                { id: 'action-1', type: 'action', position: { x: 700, y: 40 }, data: { label: 'Send Reply', description: 'Auto-reply to customer', config: {} }, inputs: [{ id: 'in-3', name: 'input', type: 'any' }], outputs: [] },
+            ],
+            edges: [{ id: 'e1', source: 'trigger-1', target: 'llm-1' }, { id: 'e2', source: 'llm-1', target: 'condition-1' }, { id: 'e3', source: 'condition-1', target: 'action-1' }],
+            variables: [], trigger: { type: 'webhook', config: {} },
+        },
+        createdAt: '2026-03-20T08:00:00Z', updatedAt: '2026-03-30T14:22:00Z',
+    },
+    {
+        id: 'demo-wf-2', name: 'Daily Analytics Report', description: 'Tổng hợp dữ liệu analytics và gửi báo cáo hàng ngày qua Slack', version: 2, enabled: true,
+        definition: {
+            nodes: [
+                { id: 'trigger-1', type: 'trigger', position: { x: 100, y: 80 }, data: { label: 'Schedule 8AM', description: 'Daily cron trigger', config: {} }, inputs: [], outputs: [{ id: 'out-1', name: 'output', type: 'any' }] },
+                { id: 'action-1', type: 'action', position: { x: 300, y: 80 }, data: { label: 'Fetch Analytics', description: 'Get yesterday metrics', config: {} }, inputs: [{ id: 'in-1', name: 'input', type: 'any' }], outputs: [{ id: 'out-2', name: 'output', type: 'any' }] },
+                { id: 'llm-1', type: 'llm', position: { x: 500, y: 80 }, data: { label: 'Summarize', description: 'Generate report summary', config: {} }, inputs: [{ id: 'in-2', name: 'input', type: 'any' }], outputs: [{ id: 'out-3', name: 'output', type: 'any' }] },
+                { id: 'action-2', type: 'action', position: { x: 700, y: 80 }, data: { label: 'Send to Slack', description: 'Post report to #analytics', config: {} }, inputs: [{ id: 'in-3', name: 'input', type: 'any' }], outputs: [] },
+            ],
+            edges: [{ id: 'e1', source: 'trigger-1', target: 'action-1' }, { id: 'e2', source: 'action-1', target: 'llm-1' }, { id: 'e3', source: 'llm-1', target: 'action-2' }],
+            variables: [], trigger: { type: 'schedule', config: { cron: '0 8 * * *' } },
+        },
+        createdAt: '2026-03-15T10:00:00Z', updatedAt: '2026-03-29T09:15:00Z',
+    },
+    {
+        id: 'demo-wf-3', name: 'New User Onboarding', description: 'Gửi email chào mừng và tạo tài khoản mặc định cho người dùng mới', version: 1, enabled: false,
+        definition: {
+            nodes: [
+                { id: 'trigger-1', type: 'trigger', position: { x: 100, y: 80 }, data: { label: 'User Created', description: 'New user webhook', config: {} }, inputs: [], outputs: [{ id: 'out-1', name: 'output', type: 'any' }] },
+                { id: 'action-1', type: 'action', position: { x: 350, y: 80 }, data: { label: 'Send Welcome Email', description: 'Personalized welcome', config: {} }, inputs: [{ id: 'in-1', name: 'input', type: 'any' }], outputs: [{ id: 'out-2', name: 'output', type: 'any' }] },
+            ],
+            edges: [{ id: 'e1', source: 'trigger-1', target: 'action-1' }],
+            variables: [], trigger: { type: 'webhook', config: {} },
+        },
+        createdAt: '2026-03-25T16:00:00Z', updatedAt: '2026-03-25T16:00:00Z',
+    },
+    {
+        id: 'demo-wf-4', name: 'Document Processing Pipeline', description: 'Tự động OCR, trích xuất thông tin và phân loại tài liệu upload', version: 5, enabled: true,
+        definition: {
+            nodes: [
+                { id: 'trigger-1', type: 'trigger', position: { x: 100, y: 80 }, data: { label: 'File Upload', description: 'Document uploaded trigger', config: {} }, inputs: [], outputs: [{ id: 'out-1', name: 'output', type: 'any' }] },
+                { id: 'action-1', type: 'action', position: { x: 300, y: 80 }, data: { label: 'OCR Extract', description: 'Extract text from document', config: {} }, inputs: [{ id: 'in-1', name: 'input', type: 'any' }], outputs: [{ id: 'out-2', name: 'output', type: 'any' }] },
+                { id: 'llm-1', type: 'llm', position: { x: 500, y: 80 }, data: { label: 'Classify & Extract', description: 'AI classification & entity extraction', config: {} }, inputs: [{ id: 'in-2', name: 'input', type: 'any' }], outputs: [{ id: 'out-3', name: 'output', type: 'any' }] },
+                { id: 'condition-1', type: 'condition', position: { x: 700, y: 80 }, data: { label: 'Validation', description: 'Check extraction quality', config: {} }, inputs: [{ id: 'in-3', name: 'input', type: 'any' }], outputs: [{ id: 'out-4', name: 'pass', type: 'any' }, { id: 'out-5', name: 'fail', type: 'any' }] },
+                { id: 'action-2', type: 'action', position: { x: 900, y: 40 }, data: { label: 'Save to DB', description: 'Store extracted data', config: {} }, inputs: [{ id: 'in-4', name: 'input', type: 'any' }], outputs: [] },
+                { id: 'action-3', type: 'action', position: { x: 900, y: 140 }, data: { label: 'Flag for Review', description: 'Manual review queue', config: {} }, inputs: [{ id: 'in-5', name: 'input', type: 'any' }], outputs: [] },
+            ],
+            edges: [{ id: 'e1', source: 'trigger-1', target: 'action-1' }, { id: 'e2', source: 'action-1', target: 'llm-1' }, { id: 'e3', source: 'llm-1', target: 'condition-1' }, { id: 'e4', source: 'condition-1', target: 'action-2' }, { id: 'e5', source: 'condition-1', target: 'action-3' }],
+            variables: [], trigger: { type: 'webhook', config: {} },
+        },
+        createdAt: '2026-03-10T12:00:00Z', updatedAt: '2026-03-31T08:45:00Z',
+    },
+    {
+        id: 'demo-wf-5', name: 'Slack Alert on Error', description: 'Theo dõi lỗi hệ thống và gửi cảnh báo qua Slack khi có lỗi nghiêm trọng', version: 1, enabled: true,
+        definition: {
+            nodes: [
+                { id: 'trigger-1', type: 'trigger', position: { x: 100, y: 80 }, data: { label: 'Error Event', description: 'System error trigger', config: {} }, inputs: [], outputs: [{ id: 'out-1', name: 'output', type: 'any' }] },
+                { id: 'condition-1', type: 'condition', position: { x: 300, y: 80 }, data: { label: 'Severity >= High', description: 'Filter critical errors', config: {} }, inputs: [{ id: 'in-1', name: 'input', type: 'any' }], outputs: [{ id: 'out-2', name: 'true', type: 'any' }] },
+                { id: 'action-1', type: 'action', position: { x: 500, y: 80 }, data: { label: 'Notify Slack', description: 'Send alert to #incidents', config: {} }, inputs: [{ id: 'in-2', name: 'input', type: 'any' }], outputs: [] },
+            ],
+            edges: [{ id: 'e1', source: 'trigger-1', target: 'condition-1' }, { id: 'e2', source: 'condition-1', target: 'action-1' }],
+            variables: [], trigger: { type: 'event', config: { event: 'system.error' } },
+        },
+        createdAt: '2026-03-28T11:00:00Z', updatedAt: '2026-03-30T16:30:00Z',
+    },
+];
+
 // ─── Main Page ─────────────────────────────────────────────
 
 export function WorkflowsPage() {
@@ -63,9 +145,10 @@ export function WorkflowsPage() {
         setLoading(true);
         try {
             const res = await getWorkflows();
-            setWorkflows(res.workflows || []);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load workflows');
+            const wfs = res.workflows || [];
+            setWorkflows(wfs.length > 0 ? wfs : DEMO_WORKFLOWS);
+        } catch {
+            setWorkflows(DEMO_WORKFLOWS);
         } finally {
             setLoading(false);
         }

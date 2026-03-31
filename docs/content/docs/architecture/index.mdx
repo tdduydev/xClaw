@@ -14,7 +14,7 @@ The platform is organized into 4 layers:
 | Layer | Components | Responsibility |
 |-------|-----------|----------------|
 | **Clients** | Web UI, Telegram, Discord, CLI, REST API | User-facing interfaces |
-| **Gateway** | Express + WebSocket server, 13 route modules | API routing, auth, session management |
+| **Gateway** | Hono + WebSocket server, 13 route modules | API routing, auth, session management |
 | **Agent Core** | Agent, LLM Router, EventBus, Memory, Tools, RAG, Tracer, Streaming | AI orchestration engine |
 | **Providers** | OpenAI, Anthropic, Ollama, Google, Groq + Skills + Integrations | External services and data |
 
@@ -26,9 +26,9 @@ The monorepo contains 14 npm workspace packages:
 
 | Package | Purpose | Key Dependencies |
 |---------|---------|-----------------|
-| `@xclaw-ai/shared` | Type definitions (491 lines), constants, schemas | None |
+| `@xclaw-ai/shared` | Type definitions (1196+ lines), constants, schemas | None |
 | `@xclaw-ai/db` | Database layer | `@xclaw-ai/shared` |
-| `@xclaw-ai/core` | Agent engine: LLM, memory, tools, RAG, tracing, streaming | `@xclaw-ai/shared` |
+| `@xclaw-ai/core` | Agent engine: LLM, memory, tools, RAG, tracing, streaming, multi-agent | `@xclaw-ai/shared` |
 | `@xclaw-ai/integrations` | Third-party service integrations | `@xclaw-ai/shared`, `@xclaw-ai/db` |
 | `@xclaw-ai/domains` | Domain-specific logic packs | `@xclaw-ai/shared`, `@xclaw-ai/db` |
 | `@xclaw-ai/ml` | Machine learning, AutoML, reinforcement learning (bandit) | `@xclaw-ai/shared`, `@xclaw-ai/core` |
@@ -65,13 +65,21 @@ The `Agent` class is the central orchestrator. It wires up 6 core subsystems + 3
 | **Skill Manager** | `skills/skill-manager.ts` | Hot-loadable plugin system with RL-based skill selection |
 | **Graph Engine** | `graph/graph-engine.ts` | BFS workflow execution |
 
+### Multi-Agent
+
+| Module | File | Purpose |
+|--------|------|--------|
+| **AgentHierarchy** | `agent/agent-hierarchy.ts` | Agent tree with parent/child relationships and `transfer_to_agent` delegation |
+| **WorkflowAgents** | `agent/workflow-agents.ts` | Sequential, Parallel, and Loop agent composition patterns |
+| **A2A Protocol** | `a2a/a2a-protocol.ts` | Agent-to-Agent communication for remote/cross-service agents |
+
 ## Type System
 
-All 491 lines of shared types are in `@xclaw-ai/shared`. Key type categories:
+All shared types are in `@xclaw-ai/shared` (`src/types/index.ts`, 1196+ lines). Key type categories:
 
 | Category | Types | Description |
 |----------|-------|-------------|
-| **LLM** | `LLMProvider`, `LLMConfig`, `LLMMessage`, `LLMResponse`, `TokenUsage` | 7 providers: OpenAI, Anthropic, Ollama, Google, Groq, Mistral, Custom |
+| **LLM** | `LLMProvider`, `LLMConfig`, `LLMMessage`, `LLMResponse`, `TokenUsage` | 12 providers: OpenAI, Anthropic, Ollama, Google, Groq, Mistral, DeepSeek, xAI, OpenRouter, Perplexity, HuggingFace, Custom |
 | **Streaming** | `StreamEvent` (8 event types) | `text-delta`, `tool-call-start/args/end`, `tool-result`, `meta`, `finish`, `error` |
 | **Tools** | `ToolDefinition`, `ToolCall`, `ToolResult` | Parameter schemas, approval flags, timeout |
 | **Skills** | `SkillManifest`, `SkillCategory` (16 categories), `SkillConfigField` | Plugin manifests with config fields |
@@ -82,6 +90,7 @@ All 491 lines of shared types are in `@xclaw-ai/shared`. Key type categories:
 | **Integrations** | `IntegrationDefinition`, `IntegrationAction`, `IntegrationTrigger` | 16 categories, 5 auth types |
 | **Tracing** | `TraceSpan`, `SpanEvent` | 6 span kinds: agent, llm, tool, workflow, memory, custom |
 | **Domains** | `DomainPackDefinition` | Industry-specific agent configurations |
+| **Multi-Agent** | `SubAgentRef`, `WorkflowAgentConfig`, `AgentTransferRequest`, `A2AAgentCard`, `A2ATask` | Agent hierarchy, workflow composition, A2A protocol |
 
 ## Security Model
 
@@ -114,4 +123,5 @@ All 491 lines of shared types are in `@xclaw-ai/shared`. Key type categories:
   <Card title="Gateway & Routes" href="/docs/architecture/gateway" description="13 route modules, WebSocket, authentication" />
   <Card title="Memory & RAG" href="/docs/architecture/memory-rag" description="Vector memory, RAG engine, document processing" />
   <Card title="Workflow Engine" href="/docs/architecture/workflow-engine" description="BFS execution, 16 node types, custom handlers" />
+  <Card title="Multi-Agent Orchestration" href="/docs/architecture/multi-agent" description="Agent hierarchy, workflow agents, transfer protocol, A2A" />
 </Cards>

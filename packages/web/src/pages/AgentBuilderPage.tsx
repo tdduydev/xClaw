@@ -1,8 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
 import {
-    Bot, Wand2, Plus, X, GripVertical, Save, Trash2,
-    Settings2, MessageSquare, Zap, Brain, ChevronDown, Eye, Loader2,
+    ArrowRightLeft,
+    Bot,
+    Brain,
+    Eye,
+    GripVertical,
+    Loader2,
+    MessageSquare,
+    Network,
+    Plus,
+    Save,
+    Settings2,
+    Trash2,
+    Wand2,
+    X,
+    Zap
 } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -22,17 +35,56 @@ interface ToolBlock {
     source: string; // 'mcp' | 'builtin' | 'custom'
 }
 
+interface SubAgentRef {
+    agentConfigId: string;
+    name: string;
+    description: string;
+}
+
+type LLMProvider = 'openai' | 'anthropic' | 'ollama' | 'google' | 'groq' | 'mistral' | 'deepseek' | 'xai' | 'openrouter' | 'perplexity' | 'huggingface' | 'custom';
+
+const PROVIDER_LABELS: Record<LLMProvider, string> = {
+    openai: 'OpenAI',
+    anthropic: 'Anthropic',
+    ollama: 'Ollama (Local)',
+    google: 'Google AI',
+    groq: 'Groq',
+    mistral: 'Mistral',
+    deepseek: 'DeepSeek',
+    xai: 'xAI (Grok)',
+    openrouter: 'OpenRouter',
+    perplexity: 'Perplexity',
+    huggingface: 'HuggingFace',
+    custom: 'Custom',
+};
+
+const PROVIDER_DEFAULT_MODELS: Partial<Record<LLMProvider, string>> = {
+    openai: 'gpt-4o-mini',
+    anthropic: 'claude-sonnet-4-20250514',
+    ollama: 'qwen2.5:1.5b',
+    google: 'gemini-2.0-flash',
+    groq: 'llama-3.3-70b-versatile',
+    mistral: 'mistral-large-latest',
+    deepseek: 'deepseek-chat',
+    xai: 'grok-3-mini',
+    openrouter: 'openai/gpt-4o-mini',
+    perplexity: 'sonar',
+};
+
 interface AgentConfig {
     name: string;
     description: string;
     persona: string;
     systemPrompt: string;
+    provider: LLMProvider;
     model: string;
     temperature: number;
     maxTokens: number;
     skills: SkillBlock[];
     tools: ToolBlock[];
     knowledgeCollections: string[];
+    subAgents: SubAgentRef[];
+    allowTransfer: boolean;
 }
 
 const DEFAULT_CONFIG: AgentConfig = {
@@ -40,13 +92,45 @@ const DEFAULT_CONFIG: AgentConfig = {
     description: '',
     persona: 'A helpful AI assistant.',
     systemPrompt: '',
-    model: 'gpt-4o-mini',
+    provider: 'ollama',
+    model: 'qwen2.5:1.5b',
     temperature: 0.7,
     maxTokens: 2048,
     skills: [],
     tools: [],
     knowledgeCollections: [],
+    subAgents: [],
+    allowTransfer: false,
 };
+
+// ─── Demo data ─────────────────────────────────────────────
+const DEMO_SKILLS: SkillBlock[] = [
+    { id: 'web-search', name: 'Web Search', description: 'Search the web using Brave/Bing APIs and return relevant results', domainId: 'general', enabled: true },
+    { id: 'code-execution', name: 'Code Execution', description: 'Execute Python/JavaScript code in a sandboxed environment', domainId: 'developer', enabled: true },
+    { id: 'file-management', name: 'File Management', description: 'Read, write, and manage files within the workspace', domainId: 'general', enabled: true },
+    { id: 'knowledge-qa', name: 'Knowledge Q&A', description: 'Answer questions from uploaded documents using RAG retrieval', domainId: 'general', enabled: true },
+    { id: 'email-compose', name: 'Email Compose', description: 'Draft and send emails via Gmail/SMTP integration', domainId: 'general', enabled: true },
+    { id: 'drug-interaction', name: 'Drug Interaction Check', description: 'Check for dangerous drug interactions and contraindications', domainId: 'healthcare', enabled: true },
+    { id: 'icd10-lookup', name: 'ICD-10 Lookup', description: 'Search and lookup ICD-10 diagnosis codes', domainId: 'healthcare', enabled: true },
+    { id: 'clinical-notes', name: 'Clinical Notes Generator', description: 'Generate structured clinical notes (SOAP, discharge, referral)', domainId: 'healthcare', enabled: true },
+    { id: 'sentiment-analysis', name: 'Sentiment Analysis', description: 'Analyze text sentiment and emotion (Vietnamese supported)', domainId: 'general', enabled: true },
+    { id: 'data-viz', name: 'Data Visualization', description: 'Generate charts and visualizations from data', domainId: 'developer', enabled: true },
+    { id: 'translation', name: 'Translation', description: 'Translate text between languages (EN, VI, JP, KR, ZH)', domainId: 'general', enabled: true },
+    { id: 'github-ops', name: 'GitHub Operations', description: 'Manage issues, PRs, and code reviews on GitHub', domainId: 'developer', enabled: true },
+];
+
+const DEMO_TOOLS: ToolBlock[] = [
+    { id: 'search_docs', name: 'search_docs', description: 'Full-text search across xClaw dev documentation', source: 'mcp' },
+    { id: 'github_create_issue', name: 'github_create_issue', description: 'Create a new issue in a GitHub repository', source: 'mcp' },
+    { id: 'github_search_code', name: 'github_search_code', description: 'Search code across GitHub repositories', source: 'mcp' },
+    { id: 'fs_read_file', name: 'fs_read_file', description: 'Read contents of a file within the sandboxed directory', source: 'mcp' },
+    { id: 'pg_query', name: 'pg_query', description: 'Execute a read-only SQL query against the PostgreSQL database', source: 'mcp' },
+    { id: 'slack_send_message', name: 'slack_send_message', description: 'Send a message to a Slack channel', source: 'mcp' },
+    { id: 'brave_web_search', name: 'brave_web_search', description: 'Search the web using Brave Search API', source: 'mcp' },
+    { id: 'shell_exec', name: 'shell_exec', description: 'Execute shell commands in a sandboxed environment', source: 'builtin' },
+    { id: 'http_request', name: 'http_request', description: 'Make HTTP requests to external APIs', source: 'builtin' },
+    { id: 'json_parse', name: 'json_parse', description: 'Parse and transform JSON data structures', source: 'builtin' },
+];
 
 // ─── Main Page Component ────────────────────────────────────
 
@@ -57,27 +141,56 @@ export function AgentBuilderPage() {
     const [availableTools, setAvailableTools] = useState<ToolBlock[]>([]);
     const [saving, setSaving] = useState(false);
     const [activePanel, setActivePanel] = useState<'persona' | 'skills' | 'tools' | 'settings'>('persona');
+    const [savedAgents, setSavedAgents] = useState<Array<{ _id: string; name: string; persona: string }>>([]);
+    const [tenantDefaults, setTenantDefaults] = useState<{ provider: string; model: string; temperature?: number; maxTokens?: number } | null>(null);
     const [dragOverZone, setDragOverZone] = useState<string | null>(null);
     const [previewOpen, setPreviewOpen] = useState(false);
 
     useEffect(() => {
+        // Load tenant settings (configured provider/model for this tenant)
+        fetch('/api/settings', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('xclaw_token')}` },
+        })
+            .then((r) => r.json())
+            .then((data) => {
+                const md = data.modelDefaults;
+                if (md) {
+                    setTenantDefaults(md);
+                    setConfig((p) => ({
+                        ...p,
+                        provider: (md.provider as LLMProvider) || p.provider,
+                        model: md.model || p.model,
+                        temperature: md.temperature ?? p.temperature,
+                        maxTokens: md.maxTokens ?? p.maxTokens,
+                    }));
+                }
+            })
+            .catch(() => {});
+
         // Load available skills from domains
         fetch('/api/marketplace/skills', {
             headers: { Authorization: `Bearer ${localStorage.getItem('xclaw_token')}` },
         })
             .then((r) => r.json())
             .then((data) => {
-                setAvailableSkills(
-                    (data.skills || []).map((s: Record<string, unknown>) => ({
-                        id: s.id as string,
-                        name: s.name as string,
-                        description: s.description as string,
-                        domainId: s.domainId as string,
-                        enabled: true,
-                    })),
-                );
+                const skills = (data.skills || []).map((s: Record<string, unknown>) => ({
+                    id: s.id as string,
+                    name: s.name as string,
+                    description: s.description as string,
+                    domainId: s.domainId as string,
+                    enabled: true,
+                }));
+                setAvailableSkills(skills.length > 0 ? skills : DEMO_SKILLS);
             })
-            .catch(() => { });
+            .catch(() => { setAvailableSkills(DEMO_SKILLS); });
+
+        // Load saved agents for sub-agent selection
+        fetch('/api/agents', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('xclaw_token')}` },
+        })
+            .then((r) => r.json())
+            .then((data) => setSavedAgents(data.agents || []))
+            .catch(() => {});
 
         // Load available MCP tools
         fetch('/api/mcp/tools', {
@@ -85,16 +198,15 @@ export function AgentBuilderPage() {
         })
             .then((r) => r.json())
             .then((data) => {
-                setAvailableTools(
-                    (data.tools || []).map((t: Record<string, unknown>) => ({
-                        id: t.name as string,
-                        name: (t.name as string).split('__').pop() || (t.name as string),
-                        description: t.description as string,
-                        source: 'mcp',
-                    })),
-                );
+                const tools = (data.tools || []).map((t: Record<string, unknown>) => ({
+                    id: t.name as string,
+                    name: (t.name as string).split('__').pop() || (t.name as string),
+                    description: t.description as string,
+                    source: 'mcp',
+                }));
+                setAvailableTools(tools.length > 0 ? tools : DEMO_TOOLS);
             })
-            .catch(() => { });
+            .catch(() => { setAvailableTools(DEMO_TOOLS); });
     }, []);
 
     const handleSave = async () => {
@@ -112,12 +224,15 @@ export function AgentBuilderPage() {
                     config: {
                         persona: config.persona,
                         systemPrompt: config.systemPrompt,
+                        provider: config.provider,
                         model: config.model,
                         temperature: config.temperature,
                         maxTokens: config.maxTokens,
                         skills: config.skills.map((s) => s.id),
                         tools: config.tools.map((t) => t.id),
                         knowledgeCollections: config.knowledgeCollections,
+                        subAgents: config.subAgents,
+                        allowTransfer: config.allowTransfer,
                     },
                 }),
             });
@@ -404,11 +519,35 @@ export function AgentBuilderPage() {
                     )}
 
                     {/* Settings Panel */}
-                    {activePanel === 'settings' && (
+                    {activePanel === 'settings' && (<>
                         <div className="rounded-xl border p-5 space-y-4" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border)' }}>
                             <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--color-fg)' }}>
                                 <Settings2 size={14} /> Model Settings
                             </h3>
+                            <div>
+                                <label className="block text-xs mb-1" style={{ color: 'var(--color-fg-muted)' }}>Provider</label>
+                                <select
+                                    value={config.provider}
+                                    onChange={(e) => {
+                                        const provider = e.target.value as LLMProvider;
+                                        const defaultModel = PROVIDER_DEFAULT_MODELS[provider] || '';
+                                        setConfig((p) => ({ ...p, provider, model: defaultModel }));
+                                    }}
+                                    className="w-full px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer"
+                                    style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
+                                >
+                                    {(Object.keys(PROVIDER_LABELS) as LLMProvider[]).map((p) => (
+                                        <option key={p} value={p}>
+                                            {PROVIDER_LABELS[p]}{tenantDefaults?.provider === p ? ' ★ Tenant Default' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {tenantDefaults && config.provider !== tenantDefaults.provider && (
+                                    <p className="text-xs mt-1" style={{ color: 'var(--color-warning, #f59e0b)' }}>
+                                        ⚠ Tenant mặc định dùng {PROVIDER_LABELS[(tenantDefaults.provider as LLMProvider)] || tenantDefaults.provider}. Chọn provider khác có thể cần API key riêng.
+                                    </p>
+                                )}
+                            </div>
                             <div>
                                 <label className="block text-xs mb-1" style={{ color: 'var(--color-fg-muted)' }}>Model</label>
                                 <input
@@ -417,7 +556,7 @@ export function AgentBuilderPage() {
                                     onChange={(e) => setConfig((p) => ({ ...p, model: e.target.value }))}
                                     className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                                     style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
-                                    placeholder="gpt-4o-mini, claude-3.5-sonnet, etc."
+                                    placeholder={PROVIDER_DEFAULT_MODELS[config.provider] || 'model-name'}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -450,7 +589,97 @@ export function AgentBuilderPage() {
                                 </div>
                             </div>
                         </div>
-                    )}
+
+                        {/* Multi-Agent Settings */}
+                        <div className="rounded-xl border p-5 space-y-4 mt-4" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border)' }}>
+                            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--color-fg)' }}>
+                                <Network size={14} /> Multi-Agent Settings
+                            </h3>
+
+                            {/* Allow Transfer Toggle */}
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <label className="block text-xs font-medium" style={{ color: 'var(--color-fg)' }}>Allow Agent Transfer</label>
+                                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-fg-muted)' }}>Enable this agent to transfer conversations to other agents</p>
+                                </div>
+                                <button
+                                    onClick={() => setConfig((p) => ({ ...p, allowTransfer: !p.allowTransfer }))}
+                                    className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
+                                        config.allowTransfer ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'
+                                    }`}
+                                >
+                                    <span
+                                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                                            config.allowTransfer ? 'translate-x-5' : 'translate-x-0.5'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
+
+                            {/* Sub-Agents */}
+                            <div>
+                                <label className="block text-xs font-medium mb-2" style={{ color: 'var(--color-fg)' }}>
+                                    Sub-Agents ({config.subAgents.length})
+                                </label>
+                                <p className="text-xs mb-3" style={{ color: 'var(--color-fg-muted)' }}>
+                                    Add child agents that this agent can delegate tasks to
+                                </p>
+
+                                {/* Existing sub-agents */}
+                                <div className="space-y-2 mb-3">
+                                    {config.subAgents.map((sa, idx) => (
+                                        <div
+                                            key={sa.agentConfigId || idx}
+                                            className="flex items-center gap-2 px-3 py-2 rounded-lg border"
+                                            style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
+                                        >
+                                            <Bot size={13} style={{ color: 'var(--color-primary)' }} />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-medium truncate" style={{ color: 'var(--color-fg)' }}>{sa.name}</p>
+                                                <p className="text-xs truncate" style={{ color: 'var(--color-fg-muted)' }}>{sa.description}</p>
+                                            </div>
+                                            <button
+                                                onClick={() => setConfig((p) => ({ ...p, subAgents: p.subAgents.filter((_, i) => i !== idx) }))}
+                                                className="p-1 cursor-pointer hover:text-red-400 transition-colors"
+                                                style={{ color: 'var(--color-fg-muted)' }}
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Add from saved agents */}
+                                {savedAgents.length > 0 && (
+                                    <div>
+                                        <label className="block text-xs mb-1" style={{ color: 'var(--color-fg-muted)' }}>Add from existing agents</label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {savedAgents
+                                                .filter((a) => !config.subAgents.find((sa) => sa.agentConfigId === a._id))
+                                                .map((agent) => (
+                                                    <button
+                                                        key={agent._id}
+                                                        onClick={() =>
+                                                            setConfig((p) => ({
+                                                                ...p,
+                                                                subAgents: [
+                                                                    ...p.subAgents,
+                                                                    { agentConfigId: agent._id, name: agent.name, description: agent.persona || '' },
+                                                                ],
+                                                            }))
+                                                        }
+                                                        className="flex items-center gap-1 px-2 py-1 rounded-md border text-xs cursor-pointer hover:border-[var(--color-primary)] transition-colors"
+                                                        style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
+                                                    >
+                                                        <Plus size={10} /> {agent.name}
+                                                    </button>
+                                                ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>)}
                 </div>
             </div>
 
@@ -470,6 +699,11 @@ export function AgentBuilderPage() {
                             <span className="font-semibold text-sm" style={{ color: 'var(--color-fg)' }}>{config.name || 'Unnamed Agent'}</span>
                         </div>
                         {config.description && <p className="text-xs" style={{ color: 'var(--color-fg-muted)' }}>{config.description}</p>}
+                    </div>
+
+                    <div className="space-y-2">
+                        <p className="text-xs font-semibold" style={{ color: 'var(--color-fg-muted)' }}>PROVIDER</p>
+                        <p className="text-xs font-mono px-2 py-1 rounded" style={{ background: 'var(--color-bg)', color: 'var(--color-fg)' }}>{PROVIDER_LABELS[config.provider]}</p>
                     </div>
 
                     <div className="space-y-2">
@@ -494,6 +728,23 @@ export function AgentBuilderPage() {
                             </div>
                         ))}
                     </div>
+
+                    {config.subAgents.length > 0 && (
+                        <div className="space-y-2">
+                            <p className="text-xs font-semibold" style={{ color: 'var(--color-fg-muted)' }}>SUB-AGENTS ({config.subAgents.length})</p>
+                            {config.subAgents.map((sa) => (
+                                <div key={sa.agentConfigId} className="text-xs px-2 py-1 rounded flex items-center gap-1.5" style={{ background: 'var(--color-bg)', color: 'var(--color-fg-muted)' }}>
+                                    <Network size={10} /> {sa.name}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {config.allowTransfer && (
+                        <div className="flex items-center gap-1.5 text-xs px-2 py-1 rounded" style={{ background: 'var(--color-primary-soft)', color: 'var(--color-primary-light)' }}>
+                            <ArrowRightLeft size={10} /> Agent Transfer Enabled
+                        </div>
+                    )}
 
                     <div className="space-y-1">
                         <p className="text-xs font-semibold" style={{ color: 'var(--color-fg-muted)' }}>PERSONA</p>

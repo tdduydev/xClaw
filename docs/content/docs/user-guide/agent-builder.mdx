@@ -90,25 +90,34 @@ Some tools require additional setup:
 
 Fine-tune the agent's technical configuration.
 
-### Model Selection
+### Model Settings
+
 | Setting | Description |
 |---------|-------------|
-| **Provider** | LLM provider (Ollama, OpenAI, Anthropic, etc.) |
-| **Model** | Specific model from the provider |
-| **Temperature** | 0.0–1.0 (lower = more deterministic, higher = more creative) |
+| **Provider** | LLM provider dropdown — defaults to the **tenant's configured provider** (marked ★ Tenant Default). 12 providers available: OpenAI, Anthropic, Ollama (Local), Google AI, Groq, Mistral, DeepSeek, xAI (Grok), OpenRouter, Perplexity, HuggingFace, Custom |
+| **Model** | Model name for the selected provider. Auto-fills with the provider's recommended default when you switch providers |
+| **Temperature** | 0.0–2.0 slider (lower = more deterministic, higher = more creative) |
 | **Max Tokens** | Maximum response length |
 
-### Memory
-| Setting | Description |
-|---------|-------------|
-| **Memory Window** | Number of previous messages to include as context (e.g., 100) |
-| **Memory Type** | Sliding window or summary-based |
+> **Tenant Default**: The Platform Admin configures a tenant-wide provider and model under **Settings → LLM / Models**. The Agent Builder reads this via `GET /api/settings → modelDefaults` and pre-fills accordingly. If you pick a different provider, a warning appears to remind you that a separate API key may be required.
 
-### Streaming
+### Multi-Agent Settings
+
+Configure how this agent participates in multi-agent orchestration.
+
 | Setting | Description |
 |---------|-------------|
-| **Enable Streaming** | Toggle real-time token-by-token output |
-| **Typing Indicator** | Show "typing..." placeholder while generating |
+| **Allow Agent Transfer** | Toggle — when ON, the LLM can call `transfer_to_agent` to delegate the conversation to a sub-agent based on context |
+| **Sub-Agents** | List child agents this agent can delegate to. Shows count badge. Add from existing saved agents or remove individually |
+
+**How transfer works at runtime:**
+1. Parent agent receives a user message
+2. LLM sees the `transfer_to_agent` tool with descriptions of all sub-agents
+3. If the request better matches a sub-agent, LLM calls `transfer_to_agent(agentName, reason)`
+4. xClaw routes the conversation to that agent and returns its response
+5. Optional `context` field passes extra info to the target agent
+
+**Adding sub-agents:** Use the dropdown at the bottom of the Sub-Agents panel to pick from agents you have already saved. Each added sub-agent is listed with its name and persona excerpt.
 
 ---
 

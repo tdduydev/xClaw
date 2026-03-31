@@ -1,9 +1,13 @@
-import type { LLMConfig, LLMMessage, LLMResponse, ToolDefinition, StreamEvent } from '@xclaw-ai/shared';
+import type { LLMConfig, LLMMessage, LLMResponse, ResponseFormat, StreamEvent, ToolDefinition } from '@xclaw-ai/shared';
 
 export interface LLMAdapter {
   readonly provider: string;
-  chat(messages: LLMMessage[], tools?: ToolDefinition[]): Promise<LLMResponse>;
-  chatStream(messages: LLMMessage[], tools?: ToolDefinition[]): AsyncGenerator<StreamEvent>;
+  chat(messages: LLMMessage[], tools?: ToolDefinition[], options?: AdapterOptions): Promise<LLMResponse>;
+  chatStream(messages: LLMMessage[], tools?: ToolDefinition[], options?: AdapterOptions): AsyncGenerator<StreamEvent>;
+}
+
+export interface AdapterOptions {
+  responseFormat?: ResponseFormat;
 }
 
 /** Hint for automatic model selection when no explicit provider is requested. */
@@ -32,6 +36,8 @@ export interface ChatOptions {
   taskComplexity?: TaskComplexity;
   /** Ordered list of provider names to try in sequence. Overrides routing table. */
   fallbackChain?: string[];
+  /** Structured output: force text, JSON object, or JSON schema response. */
+  responseFormat?: ResponseFormat;
 }
 
 export class LLMRouter {
@@ -86,6 +92,7 @@ export class LLMRouter {
 
   async chat(messages: LLMMessage[], tools?: ToolDefinition[], options?: ChatOptions): Promise<LLMResponse> {
     const chain = this.resolveChain(options);
+    const adapterOpts: AdapterOptions | undefined = options?.responseFormat ? { responseFormat: options.responseFormat } : undefined;
     let lastError: unknown;
 
     for (const provider of chain) {
@@ -93,7 +100,7 @@ export class LLMRouter {
       if (!adapter) continue; // skip unavailable providers silently
 
       try {
-        return await adapter.chat(messages, tools);
+        return await adapter.chat(messages, tools, adapterOpts);
       } catch (err) {
         lastError = err;
         // Log and try next provider in chain
@@ -107,6 +114,7 @@ export class LLMRouter {
 
   async *chatStream(messages: LLMMessage[], tools?: ToolDefinition[], options?: ChatOptions): AsyncGenerator<StreamEvent> {
     const chain = this.resolveChain(options);
+    const adapterOpts: AdapterOptions | undefined = options?.responseFormat ? { responseFormat: options.responseFormat } : undefined;
     let lastError: unknown;
 
     for (const provider of chain) {
@@ -114,7 +122,7 @@ export class LLMRouter {
       if (!adapter) continue;
 
       try {
-        yield* adapter.chatStream(messages, tools);
+        yield* adapter.chatStream(messages, tools, adapterOpts);
         return; // stream completed successfully
       } catch (err) {
         lastError = err;

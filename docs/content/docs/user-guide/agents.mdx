@@ -62,6 +62,16 @@ Toggle each capability on or off:
 ### Skills
 Attach skills from the marketplace to extend the agent's abilities. Skills provide domain-specific tools and knowledge.
 
+### Multi-Agent Settings
+Configure this agent to participate in an agent hierarchy:
+
+| Setting | Description |
+|---------|-------------|
+| **Allow Agent Transfer** | When ON, the LLM can call `transfer_to_agent` to delegate to a child agent based on context |
+| **Sub-Agents** | List of child agents this agent can delegate to. Add by name from existing saved agents |
+
+When `allowTransfer` is true, the system injects a `transfer_to_agent` tool into the agent's tool set automatically. See [Multi-Agent Orchestration](/docs/architecture/multi-agent) for details.
+
 ---
 
 ## Editing an Agent

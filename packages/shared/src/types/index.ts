@@ -39,6 +39,112 @@ export interface LLMResponse {
   finishReason: 'stop' | 'tool_calls' | 'length' | 'error';
 }
 
+// ─── Structured Output (JSON mode) ─────────────────────────
+
+export type ResponseFormat =
+  | { type: 'text' }
+  | { type: 'json_object' }
+  | { type: 'json_schema'; schema: Record<string, unknown>; name?: string; strict?: boolean };
+
+// ─── Multi-Agent Collaboration ──────────────────────────────
+
+export type AgentOrchestrationMode = 'sequential' | 'parallel' | 'debate' | 'supervisor';
+
+export interface MultiAgentTask {
+  id: string;
+  description: string;
+  input: string;
+  requiredAgentIds?: string[];
+  orchestrationMode: AgentOrchestrationMode;
+  maxRounds?: number;
+  supervisorAgentId?: string;
+}
+
+export interface AgentResult {
+  agentId: string;
+  agentName: string;
+  content: string;
+  usage?: TokenUsage;
+  duration: number;
+}
+
+export interface MultiAgentResult {
+  taskId: string;
+  mode: AgentOrchestrationMode;
+  finalContent: string;
+  agentResults: AgentResult[];
+  totalDuration: number;
+  rounds: number;
+}
+
+// ─── Evaluation Framework ───────────────────────────────────
+
+export interface EvalTestCase {
+  id: string;
+  input: string;
+  expectedOutput?: string;
+  expectedToolCalls?: string[];
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface EvalMetrics {
+  accuracy: number;
+  relevance: number;
+  latency_ms: number;
+  tokenUsage: TokenUsage;
+  hallucination: boolean;
+  toolCallAccuracy?: number;
+}
+
+export interface EvalResult {
+  testCaseId: string;
+  actualOutput: string;
+  metrics: EvalMetrics;
+  passed: boolean;
+  error?: string;
+}
+
+export interface EvalSuiteResult {
+  suiteId: string;
+  suiteName: string;
+  model: string;
+  totalTests: number;
+  passed: number;
+  failed: number;
+  averageMetrics: Omit<EvalMetrics, 'hallucination' | 'tokenUsage'>;
+  results: EvalResult[];
+  startedAt: string;
+  completedAt: string;
+}
+
+// ─── Approval Workflows (HITL) ─────────────────────────────
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+
+export interface ApprovalRequest {
+  id: string;
+  sessionId: string;
+  toolCall: ToolCall;
+  toolDefinition: ToolDefinition;
+  reason: string;
+  status: ApprovalStatus;
+  requestedAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  expiresAt: string;
+}
+
+// ─── Conversation Summarization ─────────────────────────────
+
+export interface ConversationSummary {
+  sessionId: string;
+  summary: string;
+  messageCount: number;
+  summarizedAt: string;
+  tokensSaved: number;
+}
+
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
@@ -355,6 +461,100 @@ export interface AgentConfig {
   maxToolIterations: number;
   toolTimeout: number;
   isDefault?: boolean;
+  /** Sub-agent references for multi-agent hierarchy (Google ADK-inspired) */
+  subAgents?: SubAgentRef[];
+  /** Whether LLM-driven agent transfer is allowed */
+  allowTransfer?: boolean;
+}
+
+// ─── Multi-Agent Hierarchy Types (Google ADK-inspired) ──────
+
+/** Reference to a sub-agent within the hierarchy */
+export interface SubAgentRef {
+  /** Agent config ID in MongoDB */
+  agentConfigId: string;
+  /** Display name for LLM routing */
+  name: string;
+  /** Description for LLM to understand when to delegate */
+  description: string;
+}
+
+/** Workflow agent types — orchestration patterns */
+export type WorkflowAgentType = 'sequential' | 'parallel' | 'loop';
+
+/** Configuration for workflow agents that orchestrate sub-agents */
+export interface WorkflowAgentConfig {
+  id: string;
+  name: string;
+  type: WorkflowAgentType;
+  /** Sub-agent IDs to orchestrate */
+  subAgentIds: string[];
+  /** For loop agents: max iterations before stopping */
+  maxIterations?: number;
+  /** For loop agents: state key to check for escalation */
+  escalationKey?: string;
+  /** Shared state passed between sub-agents */
+  initialState?: Record<string, unknown>;
+}
+
+/** Result of a workflow agent execution */
+export interface WorkflowAgentResult {
+  workflowId: string;
+  type: WorkflowAgentType;
+  finalContent: string;
+  agentResults: AgentResult[];
+  state: Record<string, unknown>;
+  iterations: number;
+  totalDuration: number;
+}
+
+/** Agent transfer request — LLM decides to delegate to another agent */
+export interface AgentTransferRequest {
+  /** Name of the target agent to transfer to */
+  targetAgentName: string;
+  /** Reason for transfer (from LLM) */
+  reason?: string;
+  /** Context to pass to the target agent */
+  context?: string;
+}
+
+// ─── A2A Protocol Types (Agent-to-Agent) ────────────────────
+
+/** A2A Agent Card — describes an agent's capabilities for remote discovery */
+export interface A2AAgentCard {
+  name: string;
+  description: string;
+  url: string;
+  version: string;
+  capabilities: A2ACapability[];
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+}
+
+export type A2ACapability = 'text' | 'streaming' | 'tools' | 'multi-turn' | 'artifacts';
+
+/** A2A Task — a unit of work sent to a remote agent */
+export interface A2ATask {
+  id: string;
+  message: string;
+  sessionId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** A2A Task Result — response from a remote agent */
+export interface A2ATaskResult {
+  taskId: string;
+  status: 'completed' | 'failed' | 'in-progress' | 'requires-input';
+  content: string;
+  artifacts?: A2AArtifact[];
+  error?: string;
+}
+
+/** A2A Artifact — binary or structured data from a remote agent */
+export interface A2AArtifact {
+  name: string;
+  mimeType: string;
+  data: string;
 }
 
 // ─── Event Bus ──────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { TenantService, getTenantLanguageInstruction, LANGUAGE_MAP } from './tenant.js';
 import type { TenantSettingsInfo } from './tenant.js';
+import { LANGUAGE_MAP, TenantService } from './tenant.js';
 
 // ─── Per-tenant settings (DB-backed via TenantService) ──────
 
@@ -27,6 +27,12 @@ export function createSettingsRoutes() {
       enableRag: settings.enableRag,
       enableWorkflows: settings.enableWorkflows,
       languages: Object.entries(LANGUAGE_MAP).map(([code, name]) => ({ code, name })),
+      modelDefaults: {
+        provider: settings.llmProvider,
+        model: settings.llmModel,
+        temperature: settings.llmTemperature != null ? settings.llmTemperature / 100 : 0.7,
+        maxTokens: settings.llmMaxTokens ?? 2048,
+      },
     });
   });
 

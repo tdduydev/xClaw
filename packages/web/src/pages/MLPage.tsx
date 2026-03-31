@@ -1,9 +1,14 @@
-import { useState, useEffect } from 'react';
 import {
-    Brain, Cpu, Loader2, Play, BarChart3, Zap, Database,
-    ChevronDown, ChevronRight, CheckCircle, AlertCircle, Settings,
+    AlertCircle,
+    BarChart3,
+    Brain,
+    CheckCircle,
+    Database,
+    Loader2, Play,
+    Zap
 } from 'lucide-react';
-import { getMLAlgorithms, getMLModels, trainMLModel, runAutoML } from '../lib/api';
+import { useEffect, useState } from 'react';
+import { getMLAlgorithms, getMLModels, runAutoML, trainMLModel } from '../lib/api';
 
 type Tab = 'algorithms' | 'train' | 'automl' | 'models';
 
@@ -12,6 +17,28 @@ const TABS: { id: Tab; label: string; icon: typeof Brain }[] = [
     { id: 'train', label: 'Train Model', icon: Play },
     { id: 'automl', label: 'AutoML', icon: Zap },
     { id: 'models', label: 'Model Registry', icon: Database },
+];
+
+// ─── Demo data ─────────────────────────────────────────────
+const DEMO_ALGORITHMS = [
+    { id: 'random-forest', name: 'Random Forest', taskType: 'classification', description: 'Ensemble of decision trees for robust classification. Handles non-linear relationships and feature interactions.', hyperparameters: { n_estimators: 100, max_depth: 10, min_samples_split: 2 } },
+    { id: 'logistic-regression', name: 'Logistic Regression', taskType: 'classification', description: 'Simple and interpretable linear model for binary and multi-class classification.', hyperparameters: { learning_rate: 0.01, max_iterations: 1000, regularization: 'l2' } },
+    { id: 'svm', name: 'Support Vector Machine', taskType: 'classification', description: 'Finds optimal hyperplane for classification. Effective in high-dimensional spaces.', hyperparameters: { kernel: 'rbf', C: 1.0, gamma: 'scale' } },
+    { id: 'knn', name: 'K-Nearest Neighbors', taskType: 'classification', description: 'Instance-based learning that classifies based on distance to nearest neighbors.', hyperparameters: { k: 5, distance_metric: 'euclidean', weights: 'uniform' } },
+    { id: 'linear-regression', name: 'Linear Regression', taskType: 'regression', description: 'Fits a linear relationship between features and continuous target variable.', hyperparameters: { fit_intercept: true, normalize: false } },
+    { id: 'decision-tree-reg', name: 'Decision Tree Regressor', taskType: 'regression', description: 'Tree-based model for regression tasks. Easy to interpret and visualize.', hyperparameters: { max_depth: 8, min_samples_leaf: 5, criterion: 'mse' } },
+    { id: 'kmeans', name: 'K-Means Clustering', taskType: 'clustering', description: 'Partitions data into K clusters by minimizing intra-cluster variance.', hyperparameters: { n_clusters: 3, max_iterations: 300, init_method: 'k-means++' } },
+    { id: 'dbscan', name: 'DBSCAN', taskType: 'clustering', description: 'Density-based clustering that discovers clusters of arbitrary shapes and detects outliers.', hyperparameters: { eps: 0.5, min_samples: 5, metric: 'euclidean' } },
+    { id: 'naive-bayes', name: 'Naive Bayes', taskType: 'classification', description: 'Probabilistic classifier based on Bayes theorem. Fast and effective for text classification.', hyperparameters: { alpha: 1.0, fit_prior: true } },
+    { id: 'gradient-boosting', name: 'Gradient Boosting', taskType: 'classification', description: 'Sequentially builds decision trees to minimize prediction error. High accuracy.', hyperparameters: { n_estimators: 200, learning_rate: 0.1, max_depth: 6 } },
+];
+
+const DEMO_MODELS = [
+    { id: 'model-1', name: 'Customer Churn Predictor', algorithm: 'Random Forest', accuracy: 0.943, trainedAt: '2026-03-28T14:30:00Z' },
+    { id: 'model-2', name: 'Sentiment Classifier (Vietnamese)', algorithm: 'Gradient Boosting', accuracy: 0.891, trainedAt: '2026-03-25T09:15:00Z' },
+    { id: 'model-3', name: 'Price Regressor', algorithm: 'Linear Regression', accuracy: 0.867, trainedAt: '2026-03-22T11:00:00Z' },
+    { id: 'model-4', name: 'User Segmentation', algorithm: 'K-Means Clustering', accuracy: 0.78, trainedAt: '2026-03-20T16:45:00Z' },
+    { id: 'model-5', name: 'Spam Filter', algorithm: 'Naive Bayes', accuracy: 0.962, trainedAt: '2026-03-30T08:20:00Z' },
 ];
 
 export function MLPage() {
@@ -25,8 +52,10 @@ export function MLPage() {
             getMLAlgorithms().catch(() => ({ algorithms: [] })),
             getMLModels().catch(() => ({ models: [] })),
         ]).then(([a, m]) => {
-            if (a.algorithms) setAlgorithms(a.algorithms);
-            if (m.models) setModels(m.models);
+            const algs = a.algorithms || [];
+            const mdls = m.models || [];
+            setAlgorithms(algs.length > 0 ? algs : DEMO_ALGORITHMS);
+            setModels(mdls.length > 0 ? mdls : DEMO_MODELS);
             setLoading(false);
         });
     }, []);

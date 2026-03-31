@@ -48,6 +48,29 @@ export const AgentConfigSchema = z.object({
   }),
   maxToolIterations: z.number().positive().default(10),
   toolTimeout: z.number().positive().default(30000),
+  subAgents: z.array(z.object({
+    agentConfigId: z.string(),
+    name: z.string(),
+    description: z.string(),
+  })).optional(),
+  allowTransfer: z.boolean().optional(),
+});
+
+export const WorkflowAgentConfigSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.enum(['sequential', 'parallel', 'loop']),
+  subAgentIds: z.array(z.string()).min(1),
+  maxIterations: z.number().positive().optional(),
+  escalationKey: z.string().optional(),
+  initialState: z.record(z.unknown()).optional(),
+});
+
+export const A2ATaskSchema = z.object({
+  id: z.string(),
+  message: z.string().min(1),
+  sessionId: z.string().optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 
 // ─── Auth Schemas ───────────────────────────────────────────

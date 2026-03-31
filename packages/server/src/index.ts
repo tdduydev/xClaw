@@ -1,37 +1,36 @@
 import { serve } from '@hono/node-server';
-import dotenv from 'dotenv';
 import {
   Agent,
-  LLMRouter,
-  OpenAIAdapter,
   AnthropicAdapter,
-  OllamaAdapter,
-  HuggingFaceAdapter,
+  ApprovalManager,
   DeepSeekAdapter,
-  GroqAdapter,
+  EvalFramework,
   GeminiAdapter,
-  RagEngine,
-  OpenAIEmbeddingProvider,
-  LocalEmbeddingProvider,
-  WorkflowEngine,
-  LangGraphWorkflowEngine,
-  MonitoringService,
+  GroqAdapter,
+  HuggingFaceAdapter,
   ImageGenService,
+  LangGraphWorkflowEngine,
+  LocalEmbeddingProvider,
+  MonitoringService,
+  MultiAgentOrchestrator,
+  OllamaAdapter,
+  OpenAIAdapter,
+  OpenAIEmbeddingProvider,
+  PluginManager,
+  RagEngine
 } from '@xclaw-ai/core';
-import { createGateway } from '@xclaw-ai/gateway';
-import { AgentManager, getTenantLanguageInstruction, TenantService } from '@xclaw-ai/gateway';
-import { startWorkflowScheduler } from '@xclaw-ai/gateway';
-import { IntegrationRegistry, allIntegrations } from '@xclaw-ai/integrations';
+import type { MongoChannelConnection } from '@xclaw-ai/db';
+import { agentConfigsCollection, channelConnectionsCollection, connectMongo, estimateCost, getMongo, llmLogsCollection, messagesCollection, mongoMonitoringStore, runMigrations, sandboxAuditLogsCollection, seedInitialData, sessionsCollection } from '@xclaw-ai/db';
 import { allDomainPacks } from '@xclaw-ai/domains';
+import { AgentManager, createGateway, getTenantLanguageInstruction, startWorkflowScheduler, TenantService } from '@xclaw-ai/gateway';
+import { allIntegrations, IntegrationRegistry } from '@xclaw-ai/integrations';
 import { MLEngine } from '@xclaw-ai/ml';
-import { PluginManager } from '@xclaw-ai/core';
-import { SandboxManager, TenantSandboxManager, PolicyWatcher, OCSFEventLogger } from '@xclaw-ai/sandbox';
+import { OCSFEventLogger, PolicyWatcher, SandboxManager, TenantSandboxManager } from '@xclaw-ai/sandbox';
 import type { AgentConfig, GatewayConfig } from '@xclaw-ai/shared';
 import { textToFhirSkill } from '@xclaw-ai/skills';
-import { loadKnowledgePacks } from './knowledge-loader.js';
+import dotenv from 'dotenv';
 import { ChannelManager } from './channel-manager.js';
-import { runMigrations, seedInitialData, connectMongo, getMongo, mongoMonitoringStore, sessionsCollection, messagesCollection, agentConfigsCollection, channelConnectionsCollection, llmLogsCollection, estimateCost, sandboxAuditLogsCollection } from '@xclaw-ai/db';
-import type { MongoChannelConnection } from '@xclaw-ai/db';
+import { loadKnowledgePacks } from './knowledge-loader.js';
 
 dotenv.config();
 
@@ -585,6 +584,19 @@ async function main() {
     }
   }
 
+  // ─── Multi-Agent Orchestrator ──────────────────────────────
+  const multiAgentOrchestrator = new MultiAgentOrchestrator();
+  multiAgentOrchestrator.registerAgent(agent);
+  console.log('   Multi-Agent: orchestrator ready (sequential, parallel, debate, supervisor)');
+
+  // ─── Evaluation Framework ────────────────────────────────
+  const evalFramework = new EvalFramework(agent.llm);
+  console.log('   Evaluation: framework ready (LLM-as-judge, accuracy, hallucination detection)');
+
+  // ─── Approval Manager (HITL) ─────────────────────────────
+  const approvalManager = new ApprovalManager();
+  console.log('   Approvals:  HITL approval manager ready (5m expiry)');
+
   // Create Hono app
   const app = createGateway({
     agent,
@@ -601,6 +613,9 @@ async function main() {
     sandboxManager,
     tenantSandboxManager,
     channelManager,
+    multiAgentOrchestrator,
+    evalFramework,
+    approvalManager,
   });
 
   // Start server

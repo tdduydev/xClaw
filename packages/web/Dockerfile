@@ -7,7 +7,7 @@ COPY packages/chat-sdk/package.json ./packages/chat-sdk/
 RUN npm install
 COPY packages/web/ ./packages/web/
 COPY packages/chat-sdk/ ./packages/chat-sdk/
-RUN npx vite build packages/web
+RUN npx tsc -b packages/chat-sdk && npx vite build packages/web
 
 # ── Production stage ──────────────────────────────
 FROM nginx:alpine
