@@ -1,6 +1,6 @@
-import type { ChannelPlugin, IncomingMessage, OutgoingMessage, Attachment } from '@xclaw-ai/shared';
+import type { Attachment, ChannelPlugin, IncomingMessage, OutgoingMessage } from '@xclaw-ai/shared';
+import type { TelegramMessage, TelegramUpdate, TelegramVoice } from './telegram-api.js';
 import { TelegramApi } from './telegram-api.js';
-import type { TelegramUpdate, TelegramMessage } from './telegram-api.js';
 
 export interface TelegramChannelConfig {
   botToken: string;
@@ -103,11 +103,12 @@ export class TelegramChannel implements ChannelPlugin {
       const msg = update.message;
       if (!msg || msg.from?.is_bot) continue;
 
-      // Must have text or photo (or document with image mime)
+      // Must have text, photo, image doc, or voice/audio
       const hasText = !!msg.text;
       const hasPhoto = !!msg.photo?.length;
       const hasImageDoc = !!msg.document && msg.document.mime_type?.startsWith('image/');
-      if (!hasText && !hasPhoto && !hasImageDoc) continue;
+      const hasVoice = !!(msg.voice || msg.audio);
+      if (!hasText && !hasPhoto && !hasImageDoc && !hasVoice) continue;
 
       // In groups: only respond when mentioned or replied to the bot
       if (msg.chat.type !== 'private' && !this.isBotAddressed(msg)) continue;
@@ -117,7 +118,33 @@ export class TelegramChannel implements ChannelPlugin {
       const cleanText = this.stripBotMention(rawText);
 
       // Text-only messages need non-empty content
-      if (!hasPhoto && !hasImageDoc && !cleanText.trim()) continue;
+      if (!hasPhoto && !hasImageDoc && !hasVoice && !cleanText.trim()) continue;
+
+      // Transcribe voice/audio messages → treat as text
+      let voiceTranscript = '';
+      let voiceDuration = 0;
+      if (hasVoice) {
+        const voiceInfo = (msg.voice || msg.audio) as TelegramVoice;
+        voiceDuration = voiceInfo.duration;
+        try {
+          this.api.sendChatAction(msg.chat.id, 'typing').catch(() => {});
+          const file = await this.api.getFile(voiceInfo.file_id);
+          if (file.file_path) {
+            const { buffer, contentType } = await this.api.downloadFileAsBuffer(file.file_path);
+            voiceTranscript = await this.transcribeAudio(buffer, contentType);
+          }
+        } catch (err) {
+          console.warn('Telegram: voice transcription failed:', err instanceof Error ? err.message : err);
+          // Fall through — we'll reply with an error prompt naturally
+        }
+        // If transcription failed, let it pass through as empty → agent will see it
+        if (!voiceTranscript && !cleanText.trim()) {
+          await this.api.sendMessage(msg.chat.id, '🎙️ Xin lỗi, không thể chuyển đổi giọng nói. Vui lòng nhắn tin.', {
+            replyToMessageId: msg.message_id,
+          }).catch(() => {});
+          continue;
+        }
+      }
 
       // Download photo/image attachments
       const attachments: Attachment[] = [];
@@ -159,11 +186,15 @@ export class TelegramChannel implements ChannelPlugin {
       }
 
       // Convert to IncomingMessage
+      const finalContent = hasVoice && voiceTranscript
+        ? (cleanText ? `${cleanText} [Voice: ${voiceTranscript}]` : voiceTranscript)
+        : cleanText || (attachments.length ? '[Image]' : '');
+
       const incoming: IncomingMessage = {
         platform: 'telegram',
         channelId: String(msg.chat.id),
         userId: String(msg.from?.id || 0),
-        content: cleanText || (attachments.length ? '[Image]' : ''),
+        content: finalContent,
         attachments: attachments.length ? attachments : undefined,
         timestamp: new Date(msg.date * 1000).toISOString(),
         replyTo: msg.reply_to_message ? String(msg.reply_to_message.message_id) : undefined,
@@ -174,6 +205,7 @@ export class TelegramChannel implements ChannelPlugin {
           username: msg.from?.username,
           firstName: msg.from?.first_name,
           lastName: msg.from?.last_name,
+          ...(hasVoice ? { voiceTranscription: true, voiceDuration } : {}),
         },
       };
 
@@ -220,6 +252,49 @@ export class TelegramChannel implements ChannelPlugin {
   private stripBotMention(text: string): string {
     if (!this.config.botUsername) return text;
     return text.replace(new RegExp(`@${this.config.botUsername}`, 'gi'), '').trim();
+  }
+
+  /**
+   * Transcribe an audio buffer to text.
+   * Uses OpenAI Whisper first (if OPENAI_API_KEY is set), then falls back to Ollama whisper.
+   */
+  private async transcribeAudio(buffer: Buffer, mimeType: string): Promise<string> {
+    const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : mimeType.includes('mpeg') || mimeType.includes('mp3') ? 'mp3' : 'ogg';
+    const arrayBuf = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    const blob = new Blob([arrayBuf], { type: mimeType });
+    const file = new File([blob], `voice.${ext}`, { type: mimeType });
+
+    // Try OpenAI Whisper
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('model', 'whisper-1');
+      formData.append('response_format', 'json');
+      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${openaiKey}` },
+        body: formData,
+        signal: AbortSignal.timeout(30000),
+      });
+      if (res.ok) {
+        const data = await res.json() as { text: string };
+        return data.text.trim();
+      }
+    }
+
+    // Fallback: Ollama whisper model
+    const ollamaUrl = (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/v1\/?$/, '');
+    const base64 = buffer.toString('base64');
+    const res = await fetch(`${ollamaUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'whisper', prompt: 'Transcribe this audio to text.', images: [base64], stream: false }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) throw new Error('Ollama whisper transcription failed — run: ollama pull whisper');
+    const data = await res.json() as { response: string };
+    return data.response.trim();
   }
 
   private splitMessage(text: string, maxLen: number): string[] {

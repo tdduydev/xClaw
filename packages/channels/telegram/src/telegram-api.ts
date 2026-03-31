@@ -26,6 +26,8 @@ export interface TelegramMessage {
   entities?: TelegramMessageEntity[];
   photo?: TelegramPhotoSize[];
   document?: TelegramDocument;
+  voice?: TelegramVoice;
+  audio?: TelegramVoice;
   caption?: string;
   caption_entities?: TelegramMessageEntity[];
   reply_to_message?: TelegramMessage;
@@ -61,6 +63,15 @@ export interface TelegramDocument {
   file_id: string;
   file_unique_id: string;
   file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
+export interface TelegramVoice {
+  file_id: string;
+  file_unique_id: string;
+  /** Duration in seconds */
+  duration: number;
   mime_type?: string;
   file_size?: number;
 }
@@ -156,6 +167,18 @@ export class TelegramApi {
     return this.request<{ file_id: string; file_unique_id: string; file_size?: number; file_path?: string }>('getFile', {
       file_id: fileId,
     });
+  }
+
+  /** Download a file and return its raw buffer + content-type */
+  async downloadFileAsBuffer(filePath: string): Promise<{ buffer: Buffer; contentType: string }> {
+    const url = `${TELEGRAM_API}/file/bot${this.botToken}/${filePath}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) throw new Error(`Failed to download file: ${res.status}`);
+    const arrayBuffer = await res.arrayBuffer();
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      contentType: res.headers.get('content-type') || 'audio/ogg',
+    };
   }
 
   /** Download a file by file_path and return as base64 data URL */

@@ -1,5 +1,5 @@
+import type { ConversationDetailResponse, ConversationSummary, StreamEvent } from '@xclaw-ai/chat-sdk';
 import { XClawClient } from '@xclaw-ai/chat-sdk';
-import type { StreamEvent, ConversationSummary, ConversationDetailResponse } from '@xclaw-ai/chat-sdk';
 
 const API_BASE = '';
 
@@ -621,6 +621,96 @@ export async function setActiveModel(model: string) {
   });
   if (!res.ok) throw new Error('Failed to set active model');
   return res.json();
+}
+
+// ─── Report / Excel / Chart API ───────────────────────────
+
+export interface ExcelReportPayload {
+  /** Natural language prompt — AI generates data if no `data` provided */
+  prompt?: string;
+  data?: unknown[][] | Record<string, unknown>[];
+  headers?: string[];
+  sheetName?: string;
+  title?: string;
+  fileName?: string;
+}
+
+export interface ChartPayload {
+  /** Natural language prompt — AI generates chart data if labels/datasets not provided */
+  prompt?: string;
+  type?: 'bar' | 'line' | 'pie';
+  labels?: string[];
+  datasets?: { label: string; data: number[]; color?: string }[];
+  values?: number[];
+  title?: string;
+  fileName?: string;
+}
+
+export interface GenerateReportPayload {
+  prompt: string;
+  includeExcel?: boolean;
+  includeChart?: boolean;
+  chartType?: 'bar' | 'line' | 'pie';
+  fileName?: string;
+}
+
+export interface ExcelReportResult {
+  ok: boolean;
+  fileId: string;
+  fileName: string;
+  downloadUrl: string;
+  rows: number;
+  cols: number;
+}
+
+export interface ChartResult {
+  ok: boolean;
+  fileId: string;
+  fileName: string;
+  downloadUrl: string;
+  svgInline: string;
+  type: string;
+}
+
+export interface GenerateReportResult {
+  ok: boolean;
+  title: string;
+  summary: string;
+  insights: string[];
+  excel?: { fileId: string; fileName: string; downloadUrl: string; rows: number };
+  chart?: { fileId: string; fileName: string; downloadUrl: string; type: string; svgInline: string };
+}
+
+export async function generateExcelReport(payload: ExcelReportPayload): Promise<ExcelReportResult> {
+  const res = await apiFetch('/api/report/excel', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Excel report generation failed');
+  return res.json();
+}
+
+export async function generateChart(payload: ChartPayload): Promise<ChartResult> {
+  const res = await apiFetch('/api/report/chart', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Chart generation failed');
+  return res.json();
+}
+
+export async function generateFullReport(payload: GenerateReportPayload): Promise<GenerateReportResult> {
+  const res = await apiFetch('/api/report/generate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Report generation failed');
+  return res.json();
+}
+
+/** Resolve a report download URL to a full absolute URL */
+export function reportDownloadUrl(relativeUrl: string): string {
+  return `${API_BASE}${relativeUrl}`;
 }
 
 export async function* pullModel(model: string) {

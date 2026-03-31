@@ -27,7 +27,7 @@ import { allIntegrations, IntegrationRegistry } from '@xclaw-ai/integrations';
 import { MLEngine } from '@xclaw-ai/ml';
 import { OCSFEventLogger, PolicyWatcher, SandboxManager, TenantSandboxManager } from '@xclaw-ai/sandbox';
 import type { AgentConfig, GatewayConfig } from '@xclaw-ai/shared';
-import { textToFhirSkill } from '@xclaw-ai/skills';
+import { reportGenSkill, textToFhirSkill } from '@xclaw-ai/skills';
 import dotenv from 'dotenv';
 import { ChannelManager } from './channel-manager.js';
 import { loadKnowledgePacks } from './knowledge-loader.js';
@@ -366,6 +366,12 @@ async function main() {
     agent.tools.register(tool.definition, tool.handler);
   }
   console.log(`   Skills:    text-to-fhir (${textToFhirSkill.tools.length} tools registered)`);
+
+  // Register report-gen skill (Excel, chart, AI report generation)
+  for (const tool of reportGenSkill.tools) {
+    agent.tools.register(tool.definition, tool.handler);
+  }
+  console.log(`   Skills:    report-gen (${reportGenSkill.tools.length} tools registered)`);
 
   // Workflow Engine (LangGraph-backed)
   const workflowEngine = new LangGraphWorkflowEngine(agent.tools, agent.llm, agent.events);

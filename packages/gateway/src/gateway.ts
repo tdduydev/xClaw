@@ -35,6 +35,7 @@ import { createMultiAgentRoutes } from './multi-agent.js';
 import { createOAuth2Routes } from './oauth2.js';
 import { createPluginRoutes } from './plugins.js';
 import { createRBACRoutes } from './rbac.js';
+import { createReportRoutes } from './report.js';
 import { createRetentionRoutes } from './retention.js';
 import { createSandboxRoutes } from './sandbox.js';
 import { createSearchRoutes } from './search.js';
@@ -141,6 +142,7 @@ export function createGateway(ctx: GatewayContext) {
     api.route('/marketplace', createMarketplaceRoutes(ctx.domainPacks));
   }
   api.route('/voice', createVoiceRoutes(ctx));
+  api.route('/report', createReportRoutes(ctx));
   api.route('/handoff', createHandoffRoutes());
   api.route('/analytics', createAnalyticsRoutes());
   api.route('/api-keys', createApiKeyRoutes());
