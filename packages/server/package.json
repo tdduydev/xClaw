@@ -28,6 +28,6 @@
         "@xclaw-ai/channel-discord": "*",
         "@xclaw-ai/channel-msteams": "*",
         "@hono/node-server": "^1.14.0",
-        "dotenv": "^16.4.0"
+        "dotenv": "^17.3.1"
     }
 }
