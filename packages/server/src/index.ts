@@ -1,23 +1,23 @@
 import { serve } from '@hono/node-server';
 import {
-  Agent,
-  AnthropicAdapter,
-  ApprovalManager,
-  DeepSeekAdapter,
-  EvalFramework,
-  GeminiAdapter,
-  GroqAdapter,
-  HuggingFaceAdapter,
-  ImageGenService,
-  LangGraphWorkflowEngine,
-  LocalEmbeddingProvider,
-  MonitoringService,
-  MultiAgentOrchestrator,
-  OllamaAdapter,
-  OpenAIAdapter,
-  OpenAIEmbeddingProvider,
-  PluginManager,
-  RagEngine
+    Agent,
+    AnthropicAdapter,
+    ApprovalManager,
+    DeepSeekAdapter,
+    EvalFramework,
+    GeminiAdapter,
+    GroqAdapter,
+    HuggingFaceAdapter,
+    ImageGenService,
+    LangGraphWorkflowEngine,
+    LocalEmbeddingProvider,
+    MonitoringService,
+    MultiAgentOrchestrator,
+    OllamaAdapter,
+    OpenAIAdapter,
+    OpenAIEmbeddingProvider,
+    PluginManager,
+    RagEngine
 } from '@xclaw-ai/core';
 import type { MongoChannelConnection } from '@xclaw-ai/db';
 import { agentConfigsCollection, channelConnectionsCollection, connectMongo, estimateCost, getMongo, llmLogsCollection, messagesCollection, mongoMonitoringStore, runMigrations, sandboxAuditLogsCollection, seedInitialData, sessionsCollection } from '@xclaw-ai/db';
@@ -57,6 +57,11 @@ const {
   COMFYUI_URL = 'http://localhost:8188',
   OPENSHELL_ENABLED = '',
   OPENSHELL_GATEWAY_URL = '',
+  // Vision model — used when image attachments are detected
+  // Ollama: e.g. "llava:13b", "qwen2.5vl:7b", "gemma3:12b"
+  // Set VISION_PROVIDER=gemini to use Gemini instead of Ollama
+  VISION_PROVIDER = 'ollama',
+  VISION_MODEL = '',
 } = process.env;
 
 // Auto-detect default model based on provider
@@ -72,6 +77,35 @@ When a user activates a domain pack, adopt that domain's persona and skills. By 
 Respond in the user's language. Be accurate and honest about your limitations.`;
 
 const SYSTEM_PROMPT = AGENT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT;
+
+const REALTIME_HINT_PATTERNS: RegExp[] = [
+  /\b(today|latest|breaking|current|now|news|update)\b/i,
+  /\b(weather|temperature|forecast|traffic|score|result|price|stock|exchange\s*rate)\b/i,
+  /\b(hom nay|moi nhat|tin moi|thoi tiet|gia|ty gia|ket qua|truc tiep)\b/i,
+];
+
+function wantsRealtimeSearch(message: string): boolean {
+  const trimmed = message.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('/')) return false;
+  return REALTIME_HINT_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+function buildRoutingInstruction(opts: { hasImages: boolean; wantsWebSearch: boolean }): string {
+  const instructions: string[] = [];
+  if (opts.hasImages) {
+    instructions.push(
+      'User attached image(s). Prioritize visual understanding from attached images before answering. If text in image is important, extract it first, then answer based on both image and user text.',
+    );
+  }
+  if (opts.wantsWebSearch) {
+    instructions.push(
+      'This query likely needs up-to-date information. If a web-search tool is available, use it first and cite sources. If no web-search tool is available, clearly state that the answer may be outdated.',
+    );
+  }
+  if (!instructions.length) return '';
+  return `[Routing instruction]\n${instructions.join('\n')}`;
+}
 
 async function main() {
   console.log('🐾 xClaw v2.1.0 — Open Platform Starting...');
@@ -220,7 +254,27 @@ async function main() {
     );
   }
 
-  // AgentManager — manages multiple agent configs from MongoDB
+  // ── Vision adapter: registered under its own provider key ─────────────
+  // When images are detected, the channel handler will prefer this adapter.
+  // Priority: Ollama vision model (local, no cost) → Gemini → OpenAI
+  const visionModel = VISION_MODEL || LLM_MODEL;
+  if (VISION_PROVIDER === 'ollama') {
+    const ollamaBaseUrl = OLLAMA_BASE_URL.replace(/\/v1\/?$/, '');
+    // Register a dedicated vision adapter under key 'ollama-vision'
+    const visionAdapter = new OllamaAdapter({ baseUrl: ollamaBaseUrl, model: visionModel });
+    // Attach under a distinct name so LLMRouter can select it
+    Object.defineProperty(visionAdapter, 'provider', { value: 'ollama-vision', writable: false });
+    agent.llm.registerAdapter(visionAdapter);
+    console.log(`   Vision:    ollama-vision (model: ${visionModel})`);
+  }
+  // Build the vision fallback chain (used per-request when images are present)
+  // Ollama-vision → Gemini → OpenAI → default (Ollama text)
+  const VISION_FALLBACK_CHAIN: string[] = [
+    ...(VISION_PROVIDER === 'ollama' ? ['ollama-vision'] : []),
+    ...(GEMINI_API_KEY ? ['gemini'] : []),
+    ...(OPENAI_API_KEY ? ['openai'] : []),
+    'ollama',
+  ].filter((v, i, a) => a.indexOf(v) === i); // deduplicate
   const agentManager = new AgentManager(agent);
 
   // Register adapters for dynamic agents
@@ -271,6 +325,14 @@ async function main() {
         model: LLM_PROVIDER === 'google' ? LLM_MODEL : 'gemini-2.0-flash',
       }),
     );
+  }
+
+  // Register vision adapter in agentManager too (for dynamic agents)
+  if (VISION_PROVIDER === 'ollama') {
+    const ollamaBaseUrl = OLLAMA_BASE_URL.replace(/\/v1\/?$/, '');
+    const visionAdapterForManager = new OllamaAdapter({ baseUrl: ollamaBaseUrl, model: visionModel });
+    Object.defineProperty(visionAdapterForManager, 'provider', { value: 'ollama-vision', writable: false });
+    agentManager.registerAdapter(visionAdapterForManager);
   }
 
   // RAG Engine
@@ -452,10 +514,23 @@ async function main() {
       } catch { /* RAG failure is non-fatal */ }
 
       let channelMessage = incoming.content;
+      const hasImageAttachments = !!incoming.attachments?.some((a) => a.type === 'image');
+      const shouldUseWebSearch = wantsRealtimeSearch(incoming.content);
+      const routingInstruction = buildRoutingInstruction({
+        hasImages: hasImageAttachments,
+        wantsWebSearch: shouldUseWebSearch,
+      });
+      if (routingInstruction) {
+        channelMessage = `${routingInstruction}\n\n${channelMessage}`;
+      }
+
       if (channelConn?.domainId && channelConn.domainId !== 'general') {
         const domain = allDomainPacks.find((d) => d.id === channelConn.domainId);
         if (domain?.agentPersona) {
           channelMessage = `[System instruction — Domain specialist mode]\n${domain.agentPersona}\n\n[User message]\n${incoming.content}`;
+          if (routingInstruction) {
+            channelMessage = `${routingInstruction}\n\n${channelMessage}`;
+          }
         }
       }
 
@@ -474,8 +549,13 @@ async function main() {
         ?.filter((a) => a.type === 'image' && a.url.startsWith('data:'))
         .map((a) => a.url);
 
+      // Hard-switch model: if images present, use VISION_FALLBACK_CHAIN (Ollama-vision first)
+      const llmOptions: ChatOptions | undefined = hasImageAttachments
+        ? { fallbackChain: VISION_FALLBACK_CHAIN }
+        : undefined;
+
       const llmStart = Date.now();
-      const response = await channelAgent.chat(sessionId, channelMessage, ragContext, imageDataUrls?.length ? imageDataUrls : undefined);
+      const response = await channelAgent.chat(sessionId, channelMessage, ragContext, imageDataUrls?.length ? imageDataUrls : undefined, undefined, llmOptions);
       const llmDuration = Date.now() - llmStart;
 
       llmLogsCollection().insertOne({
@@ -512,6 +592,8 @@ async function main() {
           + `🤖 ${channelAgent.config.llm.provider}/${channelAgent.config.llm.model}\n`
           + `⏱️ ${llmDuration}ms\n`
           + `👁️ Vision: ${caps.vision ? '✅' : '❌'} | 🖼️ Images: ${imageDataUrls?.length || 0}\n`
+          + `🧭 Routing: vision=${hasImageAttachments ? 'on' : 'off'}, webSearchHint=${shouldUseWebSearch ? 'on' : 'off'}\n`
+          + `🔀 Model chain: ${llmOptions ? VISION_FALLBACK_CHAIN.join(' → ') : channelAgent.config.llm.provider + '/' + channelAgent.config.llm.model}\n`
           + `📚 RAG: ${ragContext ? `✅ (${ragContext.length} chars)` : '❌ no context'}\n`
           + `🏷️ Domain: ${channelConn?.domainId || 'general'}\n`
           + `💬 Session: ${sessionId}`;

@@ -6,15 +6,16 @@
  * dynamically via this manager.
  */
 
-import type { ChannelPlugin, ChatPlatform, Attachment } from '@xclaw-ai/shared';
-import { TelegramChannel } from '@xclaw-ai/channel-telegram';
+import { DiscordChannel } from '@xclaw-ai/channel-discord';
+import { FacebookChannel } from '@xclaw-ai/channel-facebook';
+import { MSTeamsChannel } from '@xclaw-ai/channel-msteams';
 import { SlackChannel } from '@xclaw-ai/channel-slack';
+import { TelegramChannel } from '@xclaw-ai/channel-telegram';
 import { WhatsAppChannel } from '@xclaw-ai/channel-whatsapp';
 import { ZaloChannel } from '@xclaw-ai/channel-zalo';
-import { DiscordChannel } from '@xclaw-ai/channel-discord';
-import { MSTeamsChannel } from '@xclaw-ai/channel-msteams';
-import { channelConnectionsCollection } from '@xclaw-ai/db';
 import type { MongoChannelConnection } from '@xclaw-ai/db';
+import { channelConnectionsCollection } from '@xclaw-ai/db';
+import type { Attachment, ChannelPlugin, ChatPlatform } from '@xclaw-ai/shared';
 
 export type MessageHandler = (
   platform: string,
@@ -42,6 +43,7 @@ export class ChannelManager {
       case 'telegram': return new TelegramChannel();
       case 'slack': return new SlackChannel();
       case 'whatsapp': return new WhatsAppChannel();
+      case 'facebook': return new FacebookChannel();
       case 'zalo': return new ZaloChannel();
       case 'discord': return new DiscordChannel();
       case 'msteams': return new MSTeamsChannel();

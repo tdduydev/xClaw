@@ -1,9 +1,9 @@
 ---
 title: Chat Channels
-description: Connect xClaw to messaging platforms — Telegram, Slack, WhatsApp, Zalo, MS Teams, and more.
+description: Connect xClaw to messaging platforms — Telegram, Slack, WhatsApp, Zalo, Facebook Messenger, MS Teams, and more.
 ---
 
-xClaw supports **8 messaging channels** out of the box. Each channel is implemented as a `ChannelPlugin` that handles incoming messages and sends responses.
+xClaw supports **9 messaging channels** out of the box. Each channel is implemented as a `ChannelPlugin` that handles incoming messages and sends responses.
 
 ## Supported Channels
 
@@ -13,6 +13,7 @@ xClaw supports **8 messaging channels** out of the box. Each channel is implemen
 | [Slack](/docs/channels/slack) | Web API + Events | Enterprise workspace |
 | [WhatsApp](/docs/channels/whatsapp) | Cloud API (webhook) | Customer support, VN/SEA market |
 | [Zalo OA](/docs/channels/zalo) | OA API v3 (webhook) | Vietnamese enterprise |
+| [Facebook Messenger](/docs/channels/facebook) | Graph API (webhook) | Customer support, social commerce |
 | [MS Teams](/docs/channels/msteams) | Bot Framework | Corporate environments |
 | Discord | Bot Gateway | Communities, developer teams |
 | [WebChat](/docs/channels/webchat) | Embed widget | Website integration |
@@ -46,3 +47,41 @@ interface ChannelPlugin {
 5. **Activate** the channel to start receiving messages
 
 Each channel connection is linked to an **Agent Configuration** that determines which AI model and persona processes messages.
+
+## Smart Message Routing
+
+xClaw automatically detects signals in incoming messages and adjusts how they are processed:
+
+### Vision Routing (Image Attachments)
+
+When a user sends an image (Telegram photo, WhatsApp media, etc.), xClaw **hard-switches** to the configured vision model instead of the default text model:
+
+```
+ollama-vision → gemini → openai → ollama (fallback)
+```
+
+Configure via environment variables:
+
+```bash
+VISION_PROVIDER=ollama      # ollama | gemini | openai
+VISION_MODEL=llava:13b      # e.g. qwen2.5vl:7b, gemma3:12b
+```
+
+> If `VISION_MODEL` is not set, xClaw reuses `LLM_MODEL` (only works if that model supports vision).
+
+### Realtime Search Hint
+
+When a message mentions time-sensitive topics (news, weather, prices, scores), xClaw prepends a routing instruction to the prompt telling the agent to use web-search tools first — no config required.
+
+Keywords detected (Vietnamese + English): `today`, `latest`, `breaking`, `weather`, `price`, `stock`, `hôm nay`, `mới nhất`, `thời tiết`, `tỷ giá`, `kết quả`, `trực tiếp`, and more.
+
+## Webhook Infrastructure
+
+Facebook Messenger, WhatsApp, and Zalo use inbound webhooks. xClaw exposes a unified route:
+
+```
+GET  /webhooks/channels/:connectionId   ← Platform verification (hub.challenge)
+POST /webhooks/channels/:connectionId   ← Incoming events
+```
+
+The `:connectionId` is displayed on the channel card after saving.

@@ -20,6 +20,7 @@ COPY packages/gateway/package.json ./packages/gateway/
 COPY packages/server/package.json ./packages/server/
 COPY packages/cli/package.json ./packages/cli/
 COPY packages/channels/telegram/package.json ./packages/channels/telegram/
+COPY packages/channels/facebook/package.json ./packages/channels/facebook/
 COPY packages/channels/discord/package.json ./packages/channels/discord/
 COPY packages/channels/slack/package.json ./packages/channels/slack/
 COPY packages/channels/whatsapp/package.json ./packages/channels/whatsapp/
@@ -47,6 +48,7 @@ RUN npx tsc -b packages/shared && \
     npx tsc -b packages/skills && \
     npx tsc -b packages/skill-hub && \
     npx tsc -b packages/channels/telegram && \
+    npx tsc -b packages/channels/facebook && \
     npx tsc -b packages/channels/discord && \
     npx tsc -b packages/channels/slack && \
     npx tsc -b packages/channels/whatsapp && \
@@ -86,6 +88,8 @@ COPY --from=builder /app/packages/skill-hub/dist ./packages/skill-hub/dist
 COPY --from=builder /app/packages/skill-hub/package.json ./packages/skill-hub/
 COPY --from=builder /app/packages/channels/telegram/dist ./packages/channels/telegram/dist
 COPY --from=builder /app/packages/channels/telegram/package.json ./packages/channels/telegram/
+COPY --from=builder /app/packages/channels/facebook/dist ./packages/channels/facebook/dist
+COPY --from=builder /app/packages/channels/facebook/package.json ./packages/channels/facebook/
 COPY --from=builder /app/packages/channels/discord/dist ./packages/channels/discord/dist
 COPY --from=builder /app/packages/channels/discord/package.json ./packages/channels/discord/
 COPY --from=builder /app/packages/channels/slack/dist ./packages/channels/slack/dist

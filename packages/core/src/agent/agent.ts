@@ -9,6 +9,7 @@ import type {
     ToolResult
 } from '@xclaw-ai/shared';
 import { randomUUID } from 'node:crypto';
+import type { ChatOptions } from '../llm/llm-router.js';
 import { LLMRouter } from '../llm/llm-router.js';
 import { MemoryManager } from '../memory/memory-manager.js';
 import { ToolRegistry } from '../tools/tool-registry.js';
@@ -83,8 +84,9 @@ export class Agent {
   /**
    * Chat with the agent (non-streaming). Returns full response.
    * Pass `additionalTools` to inject per-request tools (e.g. domain skill tools) without mutating shared state.
+   * Pass `llmOptions` to override provider/model for this call (e.g. force vision model).
    */
-  async chat(sessionId: string, userMessage: string, ragContext?: string, images?: string[], additionalTools?: AdditionalTool[]): Promise<string> {
+  async chat(sessionId: string, userMessage: string, ragContext?: string, images?: string[], additionalTools?: AdditionalTool[], llmOptions?: ChatOptions): Promise<string> {
     const span = this.tracer.startSpan('agent:chat', 'agent');
 
     // Save user message to history
@@ -112,7 +114,7 @@ export class Agent {
 
     while (iterations < this.config.maxToolIterations) {
       iterations++;
-      response = await this.llm.chat(messages, allToolDefs);
+      response = await this.llm.chat(messages, allToolDefs, llmOptions);
 
       if (!response.toolCalls?.length) {
         // No tool calls — we have the final answer
@@ -193,8 +195,9 @@ export class Agent {
   /**
    * Stream chat response via async generator.
    * Pass `additionalTools` to inject per-request tools (e.g. domain skill tools) without mutating shared state.
+   * Pass `llmOptions` to override provider/model for this call (e.g. force vision model).
    */
-  async *chatStream(sessionId: string, userMessage: string, ragContext?: string, images?: string[], additionalTools?: AdditionalTool[]): AsyncGenerator<StreamEvent> {
+  async *chatStream(sessionId: string, userMessage: string, ragContext?: string, images?: string[], additionalTools?: AdditionalTool[], llmOptions?: ChatOptions): AsyncGenerator<StreamEvent> {
     const span = this.tracer.startSpan('agent:chatStream', 'agent');
 
     await this.memory.addMessage(sessionId, {
@@ -217,7 +220,7 @@ export class Agent {
     while (iterations < this.config.maxToolIterations) {
       iterations++;
 
-      const stream = this.llm.chatStream(messages, allToolDefs);
+      const stream = this.llm.chatStream(messages, allToolDefs, llmOptions);
 
       let fullContent = '';
       const toolCalls: ToolCall[] = [];

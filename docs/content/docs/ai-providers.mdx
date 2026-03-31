@@ -90,3 +90,66 @@ ollama pull qwen2.5:14b
 ```
 
 Set `LLM_PROVIDER=ollama` and `LLM_MODEL=qwen2.5:14b` in your `.env`.
+
+## Vision Model Routing
+
+When image attachments are detected (e.g. a Telegram photo), xClaw **hard-switches** to a dedicated vision model instead of the default text model. The router tries providers in order and falls back automatically:
+
+```
+ollama-vision → gemini → openai → ollama
+```
+
+### Configuration
+
+```bash
+# Vision model (used only when images are attached)
+VISION_PROVIDER=ollama          # ollama | gemini | openai
+VISION_MODEL=llava:13b          # e.g. qwen2.5vl:7b, gemma3:12b, llava:34b
+
+# Default text model (used for text-only messages)
+LLM_PROVIDER=ollama
+LLM_MODEL=qwen2.5:14b
+```
+
+If `VISION_MODEL` is not set, `LLM_MODEL` is used for both — this only works if the model supports vision (e.g. `gemma3:12b`, `qwen2.5vl:7b`).
+
+### Pull a Vision Model (Ollama)
+
+```bash
+# Lightweight (7B)
+ollama pull qwen2.5vl:7b
+
+# Balanced (13B)
+ollama pull llava:13b
+
+# High quality (34B)
+ollama pull llava:34b
+```
+
+### How It Works
+
+The `chat()` call in the channel handler passes `ChatOptions.fallbackChain` when images are present:
+
+```typescript
+const llmOptions = hasImages
+  ? { fallbackChain: ['ollama-vision', 'gemini', 'openai', 'ollama'] }
+  : undefined;
+
+await agent.chat(sessionId, message, ragContext, imageDataUrls, undefined, llmOptions);
+```
+
+The `LLMRouter` registers the Ollama vision adapter under the key `'ollama-vision'` so it can be selected independently of the default `'ollama'` text adapter. Both can run simultaneously with different models.
+
+## Automatic Routing (LLMRouter)
+
+Beyond vision, `LLMRouter` supports task-complexity routing via `ChatOptions.taskComplexity`:
+
+| Value | Chain Order |
+|-------|------------|
+| `'fast'` | groq → ollama → openai → anthropic |
+| `'smart'` | anthropic → openai → mistral → groq |
+| `'cheap'` | ollama → deepseek → groq → mistral → openai |
+
+```typescript
+await agent.chat(sessionId, msg, rag, undefined, undefined, { taskComplexity: 'smart' });
+```

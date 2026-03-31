@@ -22,6 +22,7 @@
         "@xclaw-ai/skills": "*",
         "@xclaw-ai/channel-telegram": "*",
         "@xclaw-ai/channel-slack": "*",
+        "@xclaw-ai/channel-facebook": "*",
         "@xclaw-ai/channel-whatsapp": "*",
         "@xclaw-ai/channel-zalo": "*",
         "@xclaw-ai/channel-discord": "*",

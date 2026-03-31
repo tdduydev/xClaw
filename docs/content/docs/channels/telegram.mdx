@@ -40,3 +40,32 @@ Click **Activate** on the channel card. xClaw will start polling for messages.
 | Field | Required | Description |
 |-------|----------|-------------|
 | `botToken` | ✅ | Bot token from @BotFather |
+
+## Image & Vision Support
+
+When a user sends a **photo**, xClaw automatically:
+
+1. Downloads the image from Telegram's file server
+2. Converts it to a base64 data URL
+3. **Hard-switches** to the vision model (e.g. `llava:13b` via Ollama, or Gemini) for that message
+4. The vision fallback chain is: `ollama-vision → gemini → openai → ollama`
+
+Configure the vision model via env vars:
+
+```bash
+VISION_PROVIDER=ollama
+VISION_MODEL=llava:13b   # or qwen2.5vl:7b, gemma3:12b
+```
+
+No config is needed if `LLM_MODEL` already supports vision (e.g. `gemma3:12b`).
+
+## Realtime Search Detection
+
+For messages about time-sensitive topics (weather, news, prices, scores), xClaw automatically prepends a routing instruction telling the agent to use web-search tools first. This works for both Vietnamese and English.
+
+## Group Chat
+
+In group chats, the bot responds when:
+- **@mentioned** by username
+- **Replied to** directly
+- A **/command** is sent

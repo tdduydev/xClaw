@@ -105,6 +105,7 @@ const DEFAULT_CONFIG: AgentConfig = {
 
 // ─── Demo data ─────────────────────────────────────────────
 const DEMO_SKILLS: SkillBlock[] = [
+    { id: 'device-control', name: 'Device Control', description: 'Open browser, search websites, capture screenshots, and analyze visual output', domainId: 'developer', enabled: true },
     { id: 'web-search', name: 'Web Search', description: 'Search the web using Brave/Bing APIs and return relevant results', domainId: 'general', enabled: true },
     { id: 'code-execution', name: 'Code Execution', description: 'Execute Python/JavaScript code in a sandboxed environment', domainId: 'developer', enabled: true },
     { id: 'file-management', name: 'File Management', description: 'Read, write, and manage files within the workspace', domainId: 'general', enabled: true },
@@ -120,12 +121,17 @@ const DEMO_SKILLS: SkillBlock[] = [
 ];
 
 const DEMO_TOOLS: ToolBlock[] = [
+    { id: 'chrome_open_page', name: 'chrome_open_page', description: 'Open Chrome and navigate to a URL for browser automation workflows', source: 'mcp' },
+    { id: 'chrome_take_screenshot', name: 'chrome_take_screenshot', description: 'Capture webpage screenshots after search/navigation', source: 'mcp' },
+    { id: 'vision_analyze_screenshot', name: 'vision_analyze_screenshot', description: 'Analyze captured screenshots for insights, errors, or UI issues', source: 'builtin' },
     { id: 'search_docs', name: 'search_docs', description: 'Full-text search across xClaw dev documentation', source: 'mcp' },
     { id: 'github_create_issue', name: 'github_create_issue', description: 'Create a new issue in a GitHub repository', source: 'mcp' },
     { id: 'github_search_code', name: 'github_search_code', description: 'Search code across GitHub repositories', source: 'mcp' },
     { id: 'fs_read_file', name: 'fs_read_file', description: 'Read contents of a file within the sandboxed directory', source: 'mcp' },
     { id: 'pg_query', name: 'pg_query', description: 'Execute a read-only SQL query against the PostgreSQL database', source: 'mcp' },
     { id: 'slack_send_message', name: 'slack_send_message', description: 'Send a message to a Slack channel', source: 'mcp' },
+    { id: 'facebook_send_message', name: 'facebook_send_message', description: 'Send and receive chat messages through Facebook Messenger channel', source: 'builtin' },
+    { id: 'zalo_send_message', name: 'zalo_send_message', description: 'Send and receive chat messages through Zalo Official Account channel', source: 'builtin' },
     { id: 'brave_web_search', name: 'brave_web_search', description: 'Search the web using Brave Search API', source: 'mcp' },
     { id: 'shell_exec', name: 'shell_exec', description: 'Execute shell commands in a sandboxed environment', source: 'builtin' },
     { id: 'http_request', name: 'http_request', description: 'Make HTTP requests to external APIs', source: 'builtin' },

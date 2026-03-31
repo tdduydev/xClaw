@@ -1,13 +1,13 @@
-import { randomUUID } from 'node:crypto';
-import { Hono } from 'hono';
 import {
-  channelConnectionsCollection,
-  sessionsCollection,
-  messagesCollection,
-  agentConfigsCollection,
-  type MongoChannelConnection,
-  type MongoAgentConfig,
+    agentConfigsCollection,
+    channelConnectionsCollection,
+    messagesCollection,
+    sessionsCollection,
+    type MongoAgentConfig,
+    type MongoChannelConnection,
 } from '@xclaw-ai/db';
+import { Hono } from 'hono';
+import { randomUUID } from 'node:crypto';
 import type { GatewayContext } from './gateway.js';
 
 // Helper to extract user info from Hono context
@@ -633,6 +633,24 @@ async function testChannelConnection(channel: MongoChannelConnection): Promise<{
         };
       } catch {
         return { ok: false, message: 'Connection failed — check token' };
+      }
+    }
+    case 'facebook': {
+      try {
+        const res = await fetch(
+          `https://graph.facebook.com/v18.0/me?fields=id,name&access_token=${encodeURIComponent(channel.config.pageAccessToken)}`,
+          { signal: AbortSignal.timeout(10000) },
+        );
+        if (!res.ok) return { ok: false, message: 'Invalid Page Access Token' };
+        const data = await res.json() as any;
+        if (data.error) return { ok: false, message: `Facebook error: ${data.error?.message || 'Unknown error'}` };
+        return {
+          ok: true,
+          message: `Connected to Facebook page "${data.name || 'unknown'}"`,
+          metadata: { pageId: data.id, pageName: data.name },
+        };
+      } catch {
+        return { ok: false, message: 'Connection failed — check page access token' };
       }
     }
     case 'slack': {

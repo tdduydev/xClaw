@@ -16,6 +16,7 @@ import { createApiKeyRoutes } from './api-keys.js';
 import { createApprovalRoutes } from './approvals.js';
 import { createZaloMiniAppAuthRoutes } from './auth-zalo-miniapp.js';
 import { authMiddleware, createAuthRoutes } from './auth.js';
+import { createChannelWebhookRoutes } from './channel-webhooks.js';
 import { createChatRoutes } from './chat.js';
 import { createDevDocsRoutes } from './dev-docs.js';
 import { createDomainRoutes } from './domains.js';
@@ -57,7 +58,12 @@ export interface GatewayContext {
   pluginManager?: PluginManager;
   sandboxManager?: SandboxManager;
   tenantSandboxManager?: TenantSandboxManager;
-  channelManager?: { startChannel(conn: any): Promise<void>; stopChannel(id: string): Promise<void>; isRunning(id: string): boolean };
+  channelManager?: {
+    startChannel(conn: any): Promise<void>;
+    stopChannel(id: string): Promise<void>;
+    isRunning(id: string): boolean;
+    getInstance?(id: string): unknown;
+  };
   multiAgentOrchestrator?: MultiAgentOrchestrator;
   evalFramework?: EvalFramework;
   approvalManager?: ApprovalManager;
@@ -93,6 +99,9 @@ export function createGateway(ctx: GatewayContext) {
   // Public webhook routes (no auth — secrets validated per-workflow)
   if (ctx.workflowEngine) {
     app.route('/webhooks/workflow', createWorkflowWebhookRoutes(ctx.workflowEngine));
+  }
+  if (ctx.channelManager) {
+    app.route('/webhooks/channels', createChannelWebhookRoutes(ctx));
   }
 
   // Protected routes

@@ -410,7 +410,7 @@ export interface ConversationMessage {
 
 // ─── Chat / Messaging Types ────────────────────────────────
 
-export type ChatPlatform = 'web' | 'telegram' | 'discord' | 'slack' | 'whatsapp' | 'zalo' | 'msteams' | 'api';
+export type ChatPlatform = 'web' | 'telegram' | 'discord' | 'facebook' | 'slack' | 'whatsapp' | 'zalo' | 'msteams' | 'api';
 
 export interface IncomingMessage {
   platform: ChatPlatform;
